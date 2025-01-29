@@ -1,5 +1,7 @@
 package website.lihan.temu.bus;
 
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+
 public class SerialPort implements Region {
   public final long baseAddress;
 
@@ -27,6 +29,7 @@ public class SerialPort implements Region {
   }
 
   @Override
+  @TruffleBoundary
   public int write(long address, byte[] data, int length) {
     if (address == 0 && length == 1) {
       System.out.print((char) data[0]);

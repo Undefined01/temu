@@ -3,28 +3,35 @@ package website.lihan.temu.cpu;
 import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.HostCompilerDirectives.BytecodeInterpreterSwitch;
 import com.oracle.truffle.api.frame.VirtualFrame;
+import com.oracle.truffle.api.memory.ByteArraySupport;
 import com.oracle.truffle.api.nodes.BytecodeOSRNode;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 
+import website.lihan.temu.Rv64Context;
 import website.lihan.temu.bus.Bus;
 
 public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   @CompilationFinal long baseAddr;
   @CompilationFinal int entryBci;
-  public long register[] = new long[32];
+  @CompilationFinal Rv64State cpu;
   @Child Bus bus;
   @CompilationFinal(dimensions=1) private byte[] bc;
   @CompilationFinal private Object osrMetadata;
 
-  public Rv64BytecodeNode(Bus bus) {
+  private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
+
+  public Rv64BytecodeNode(Bus bus, long baseAddr, byte[] bc, int entryBci) {
     this.bus = bus;
-    this.bc = new byte[4 * 1024];
-    this.baseAddr = 0x80000000L;
-    bus.executeRead(baseAddr, bc, bc.length);
-    this.entryBci = 0;
+    this.baseAddr = baseAddr;
+    this.bc = bc;
+    this.entryBci = entryBci;
+    
+    var context = Rv64Context.get(this);
+    this.cpu = context.getState();
   }
 
   public Object execute(VirtualFrame frame) {
@@ -49,16 +56,9 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   @BytecodeInterpreterSwitch
   @ExplodeLoop(kind = ExplodeLoop.LoopExplosionKind.MERGE_EXPLODE)
   Object executeFromBci(VirtualFrame frame, int bci) {
-    byte[] bytecode = new byte[4];
     while (true) {
       CompilerAsserts.partialEvaluationConstant(bci);
-      // bus.executeRead(pc, bytecode, 4);
-      System.arraycopy(bc, bci, bytecode, 0, 4);
-      int instr =
-          bytecode[0] & 0xff
-              | (bytecode[1] & 0xff) << 8
-              | (bytecode[2] & 0xff) << 16
-              | (bytecode[3] & 0xff) << 24;
+      int instr = BYTES.getInt(bc, bci);
       CompilerAsserts.partialEvaluationConstant(instr);
 
       int nextBci = executeOneInstr(frame, bci, instr);
@@ -66,7 +66,6 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
         if (BytecodeOSRNode.pollOSRBackEdge(this)) { // OSR can be tried
           Object result = BytecodeOSRNode.tryOSR(this, nextBci, null, null, frame);
-          System.err.printf("Result %s\n", result);
           if (result != null) { // OSR was performed
             return result;
           }
@@ -81,49 +80,56 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     switch (opcode) {
       case Opcodes.ARITHMETIC_IMM -> {
         var i = IInstruct.decode(instr);
-        var res = calcArthimetic(i.funct3, 0, getRegister(i.rs1), i.imm);
-        setRegister(i.rd, res);
+        var res = calcArthimetic(i.funct3, i.funct7, cpu.getReg(i.rs1), i.imm, true);
+        cpu.setReg(i.rd, res);
       }
       case Opcodes.ARITHMETIC -> {
         var r = RInstruct.decode(instr);
-        var res = calcArthimetic(r.func3, r.func7, getRegister(r.rs1), getRegister(r.rs2));
-        setRegister(r.rd, res);
-      }
-      case Opcodes.ARITHMETIC32 -> {
-        var i = IInstruct.decode(instr);
-        var res = calcArthimetic(i.funct3, 0, getRegister(i.rs1), i.imm);
-        res = signExtend(res, 32);
-        setRegister(i.rd, res);
+        var res = calcArthimetic(r.func3, r.func7, cpu.getReg(r.rs1), cpu.getReg(r.rs2), false);
+        cpu.setReg(r.rd, res);
       }
       case Opcodes.ARITHMETIC32_IMM -> {
-        var r = RInstruct.decode(instr);
-        var res = calcArthimetic(r.func3, r.func7, getRegister(r.rs1), getRegister(r.rs2));
+        var i = IInstruct.decode(instr);
+        var res = calcArthimetic(i.funct3, 0, cpu.getReg(i.rs1) & 0xffffffffL, (long)i.imm & 0xffffffffL, false);
         res = signExtend(res, 32);
-        setRegister(r.rd, res);
+        cpu.setReg(i.rd, res);
+      }
+      case Opcodes.ARITHMETIC32 -> {
+        var r = RInstruct.decode(instr);
+        var res = calcArthimetic(r.func3, r.func7, cpu.getReg(r.rs1)& 0xffffffffL, cpu.getReg(r.rs2)& 0xffffffffL, true);
+        res = signExtend(res, 32);
+        cpu.setReg(r.rd, res);
       }
       case Opcodes.LUI -> {
-        var u = UInstruct.decode(instr);
-        setRegister(u.rd, u.imm);
+        final var u = UInstruct.decode(instr);
+        cpu.setReg(u.rd, u.imm);
       }
       case Opcodes.AUIPC -> {
-        var u = UInstruct.decode(instr);
-        setRegister(u.rd, bci + u.imm);
+        final var u = UInstruct.decode(instr);
+        cpu.setReg(u.rd, getPc(bci + u.imm));
       }
       case Opcodes.JAL -> {
-        var j = JInstruct.decode(instr);
-        int nextBci = bci + j.imm;
-        setRegister(j.rd, bci + 4);
+        final var j = JInstruct.decode(instr);
+        var imm20 = (instr >> 31) << 20;
+        var imm10_1 = ((instr >> 21) & 0x3ff) << 1;
+        var imm11 = ((instr >> 20) & 0x1) << 11;
+        var imm19_12 = ((instr >> 12) & 0xff) << 12;
+        var imm = imm20 | imm19_12 | imm11 | imm10_1;
+        int nextBci = bci + imm;
+        // int nextBci = bci + j.imm;
+        cpu.setReg(j.rd, getPc(bci + 4));
         return tryJump(nextBci);
       }
       case Opcodes.JALR -> {
-        var i = IInstruct.decode(instr);
-        var nextPc = getRegister(i.rs1) + i.imm;
-        setRegister(i.rd, bci + 4);
+        final var i = IInstruct.decode(instr);
+        var imm = (instr >> 20);
+        var nextPc = cpu.getReg(i.rs1) + imm;
+        cpu.setReg(i.rd, getPc(bci + 4));
         return tryJumpPc(nextPc);
       }
       case Opcodes.BRANCH -> {
         var b = BInstruct.decode(instr);
-        var cond = calcComparsion(b.funct3, getRegister(b.rs1), getRegister(b.rs2));
+        var cond = calcComparsion(b.funct3, cpu.getReg(b.rs1), cpu.getReg(b.rs2));
         if (cond) {
           int nextBci = bci + b.imm;
           return tryJump(nextBci);
@@ -132,7 +138,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       case Opcodes.LOAD -> doLoad(bci, instr);
       case Opcodes.STORE -> doStore(instr);
       case Opcodes.HALT -> {
-        return 0;
+        throw HaltException.create(getPc(bci));
       }
       default -> throw IllegalInstructionException.create(bci, instr);
     }
@@ -140,6 +146,8 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   }
 
   private int tryJump(int nextBci) {
+    CompilerAsserts.partialEvaluationConstant(nextBci);
+    CompilerAsserts.partialEvaluationConstant(bc.length);
     if (nextBci >= 0 || nextBci < bc.length) {
       return nextBci;
     }
@@ -147,9 +155,11 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   }
 
   private int tryJumpPc(long nextPc) {
-    if (nextPc >= baseAddr || nextPc < baseAddr + bc.length) {
-      return (int) (nextPc - baseAddr);
-    }
+    // CompilerAsserts.partialEvaluationConstant(baseAddr);
+    // CompilerAsserts.partialEvaluationConstant(bc.length);
+    // if (nextPc >= baseAddr || nextPc < baseAddr + bc.length) {
+    //   return (int) (nextPc - baseAddr);
+    // }
     throw JumpException.create(nextPc);
   }
 
@@ -157,10 +167,10 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     return baseAddr + (long)bci;
   }
 
-  private long calcArthimetic(int func3, int func7, long op1, long op2) {
+  private long calcArthimetic(int func3, int func7, long op1, long op2, boolean isImm) {
     return switch (func3) {
       case 0b000 -> {
-        if (func7 == 0) {
+        if (isImm || func7 == 0) {
           yield op1 + op2;
         } else {
           yield op1 - op2;
@@ -173,29 +183,22 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       case 0b101 -> {
         op2 &= 0x3f;
         if (func7 == 0) {
+          System.err.println(">>> " + op1 + " " + op2 + " " + (op1 >>> op2));
           yield op1 >>> op2;
         } else {
+          System.err.println(">> " + op1 + " " + op2 + " " + (op1 >> op2));
           yield op1 >> op2;
         }
       }
       case 0b110 -> op1 | op2;
       case 0b111 -> op1 & op2;
-      default -> throw InternalException.create(String.valueOf(func3));
+      default -> throw InternalException.create(invalidFunc3(func3));
     };
   }
 
-  public long getRegister(int rs) {
-    if (rs != 0) {
-      return register[rs];
-    } else {
-      return 0;
-    }
-  }
-
-  private void setRegister(int rd, long value) {
-    if (rd != 0) {
-      register[rd] = value;
-    }
+  @TruffleBoundary
+  private String invalidFunc3(int func3) {
+    return "Invalid funct3 " + func3;
   }
 
   private boolean calcComparsion(int func3, long op1, long op2) {
@@ -221,7 +224,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           case 0b11 -> 8;
           default -> throw IllegalInstructionException.create(pc, instr);
         };
-    bus.executeRead(getRegister(i.rs1) + i.imm, data, length);
+    bus.executeRead(cpu.getReg(i.rs1) + i.imm, data, length);
     long value = 0;
     for (int j = 0; j < length; j++) {
       value |= (long) (data[j] & 0xff) << (j * 8);
@@ -229,7 +232,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     if ((i.funct3 & 0b100) == 0) {
       value = signExtend(value, length * 8);
     }
-    setRegister(i.rd, value);
+    cpu.setReg(i.rd, value);
   }
 
   @ExplodeLoop
@@ -244,25 +247,26 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           case 0b11 -> 8;
           default -> throw IllegalInstructionException.create(entryBci, instr);
         };
-    long value = getRegister(s.rs2);
+    long value = cpu.getReg(s.rs2);
     for (int i = 0; i < length; i++) {
       data[i] = (byte) (value >> (i * 8));
     }
-    bus.executeWrite(getRegister(s.rs1) + s.imm, data, length);
+    bus.executeWrite(cpu.getReg(s.rs1) + s.imm, data, length);
   }
 
   private static long signExtend(long value, int bits) {
     return (value << (64 - bits)) >> (64 - bits);
   }
 
-  static record IInstruct(int opcode, int rd, int rs1, int funct3, int imm) {
+  static record IInstruct(int opcode, int rd, int rs1, int funct3, int funct7, int imm) {
     public static IInstruct decode(int instr) {
       var opcode = instr & 0x7f;
       var rd = (instr >> 7) & 0x1f;
       var funct3 = (instr >> 12) & 0x7;
+      var funct7 = (instr >> 25) & 0x7f;
       var rs1 = (instr >> 15) & 0x1f;
       var imm = (instr >> 20);
-      return new IInstruct(opcode, rd, rs1, funct3, imm);
+      return new IInstruct(opcode, rd, rs1, funct3, funct7, imm);
     }
   }
 

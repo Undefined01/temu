@@ -5,7 +5,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.nodes.ExplodeLoop;
 
 public final class Memory implements Region {
   private final long startAddress;
@@ -43,20 +42,14 @@ public final class Memory implements Region {
   }
 
   @Override
-  @ExplodeLoop
   public int read(long address, byte[] buffer, int length) {
-    for (int i = 0; i < length; i++) {
-      buffer[i] = memory[(int) (address + i)];
-    }
+    System.arraycopy(memory, (int)address, buffer, 0, length);
     return 0;
   }
 
   @Override
-  @ExplodeLoop
   public int write(long address, byte[] buffer, int length) {
-    for (int i = 0; i < length; i++) {
-      memory[(int) (address + i)] = buffer[i];
-    }
+    System.arraycopy(buffer, 0, memory, (int)address, length);
     return 0;
   }
 }

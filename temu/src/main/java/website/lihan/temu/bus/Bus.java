@@ -1,6 +1,7 @@
 package website.lihan.temu.bus;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 
@@ -15,7 +16,7 @@ public final class Bus extends Node {
   public int executeRead(long address, byte[] data, int length) {
     var region = findRegion(address);
     if (region == null) {
-      System.err.println("[Bus] read from invalid address: " + address);
+      printInvalidRead(address);
       return -1;
     }
     address -= region.getStartAddress();
@@ -25,7 +26,7 @@ public final class Bus extends Node {
   public int executeWrite(long address, byte[] data, int length) {
     var region = findRegion(address);
     if (region == null) {
-      System.err.println("[Bus] write to invalid address: " + address);
+      printInvalidWrite(address);
       return -1;
     }
     address -= region.getStartAddress();
@@ -40,5 +41,15 @@ public final class Bus extends Node {
       }
     }
     return null;
+  }
+
+  @TruffleBoundary
+  private void printInvalidRead(long address) {
+    System.err.println("[Bus] read from invalid address: " + address);
+  }
+
+  @TruffleBoundary
+  private void printInvalidWrite(long address) {
+    System.err.println("[Bus] write from invalid address: " + address);
   }
 }

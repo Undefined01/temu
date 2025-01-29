@@ -11,8 +11,7 @@ import website.lihan.temu.bus.Bus;
 import website.lihan.temu.bus.Memory;
 import website.lihan.temu.bus.Region;
 import website.lihan.temu.bus.SerialPort;
-import website.lihan.temu.cpu.Rv64BytecodeNode;
-import website.lihan.temu.cpu.Rv64BytecodeRootNode;
+import website.lihan.temu.cpu.Rv64ExecutionRootNode;
 
 @TruffleLanguage.Registration(
     id = Rv64BytecodeLanguage.ID,
@@ -42,10 +41,14 @@ public final class Rv64BytecodeLanguage extends TruffleLanguage<Rv64Context> {
     var bytecode = source.getBytes().toByteArray();
     memory.write(0, bytecode, bytecode.length);
     var bus = new Bus(new Region[] {memory, new SerialPort()});
-    var bytecodeNode = new Rv64BytecodeNode(bus);
-    var evalRootNode = new Rv64BytecodeRootNode(this, bytecodeNode);
+    var evalRootNode = new Rv64ExecutionRootNode(this, bus);
 
     return evalRootNode.getCallTarget();
+  }
+
+  @Override
+  protected Object getScope(Rv64Context context) {
+      return context.createScopeObject();
   }
 
   @Override
