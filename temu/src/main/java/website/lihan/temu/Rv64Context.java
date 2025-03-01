@@ -8,6 +8,8 @@ import com.oracle.truffle.api.interop.InteropLibrary;
 import com.oracle.truffle.api.interop.InvalidArrayIndexException;
 import com.oracle.truffle.api.interop.TruffleObject;
 import com.oracle.truffle.api.interop.UnknownIdentifierException;
+import com.oracle.truffle.api.interop.UnsupportedMessageException;
+import com.oracle.truffle.api.interop.UnsupportedTypeException;
 import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
@@ -49,10 +51,9 @@ public final class Rv64Context {
       var regs = new Object[32];
       for (int i = 0; i < 32; i++) {
         regs[i] = state.getReg(i);
-        System.err.println("#" + i + ": " + regs[i]);
       }
       objs.writeMember(obj, "registers", new TruffleList(regs));
-    } catch (Exception e) {
+    } catch (UnknownIdentifierException | UnsupportedMessageException | UnsupportedTypeException e) {
       throw new RuntimeException(e);
     }
     return obj;

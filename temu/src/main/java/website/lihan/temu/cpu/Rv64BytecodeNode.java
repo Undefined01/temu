@@ -106,7 +106,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       }
       case Opcodes.AUIPC -> {
         final var u = UInstruct.decode(instr);
-        cpu.setReg(u.rd, getPc(bci + u.imm));
+        cpu.setReg(u.rd, getPc(bci) + u.imm);
       }
       case Opcodes.JAL -> {
         final var j = JInstruct.decode(instr);
@@ -154,6 +154,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     throw JumpException.create(getPc(nextBci));
   }
 
+  // @TruffleBoundary
   private int tryJumpPc(long nextPc) {
     // CompilerAsserts.partialEvaluationConstant(baseAddr);
     // CompilerAsserts.partialEvaluationConstant(bc.length);
@@ -183,10 +184,8 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       case 0b101 -> {
         op2 &= 0x3f;
         if (func7 == 0) {
-          System.err.println(">>> " + op1 + " " + op2 + " " + (op1 >>> op2));
           yield op1 >>> op2;
         } else {
-          System.err.println(">> " + op1 + " " + op2 + " " + (op1 >> op2));
           yield op1 >> op2;
         }
       }

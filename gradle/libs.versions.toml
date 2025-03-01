@@ -4,8 +4,8 @@
 [versions]
 guava = "33.2.1-jre"
 junit-jupiter = "5.10.3"
-# graalvm = "24.1.1"
-graalvm = "24.2.0-SNAPSHOT"
+graalvm = "24.1.2"
+# graalvm = "24.2.0-SNAPSHOT"
 
 [libraries]
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
