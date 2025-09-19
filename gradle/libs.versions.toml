@@ -4,7 +4,7 @@
 [versions]
 guava = "33.2.1-jre"
 junit-jupiter = "5.10.3"
-graalvm = "24.1.2"
+graalvm = "25.0.0"
 # graalvm = "24.2.0-SNAPSHOT"
 
 [libraries]

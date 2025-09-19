@@ -8,16 +8,16 @@
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
-    id("com.diffplug.spotless") version "7.0.0.BETA4"
-    id("me.champeau.jmh") version "0.7.2"
+    id("com.diffplug.spotless") version "7.2.1"
+    id("me.champeau.jmh") version "0.7.3"
 }
 
 repositories {
     // Use Maven Central for resolving dependencies.
     mavenCentral()
-    maven {
-        url = uri("/tmp/maven-bundle-ce-24.2.0-dev")
-    }
+    // maven {
+    //     url = uri("/tmp/maven-bundle-ce-24.2.0-dev")
+    // }
 }
 
 dependencies {
@@ -33,13 +33,6 @@ dependencies {
     testAnnotationProcessor(libs.truffle.dsl.processor)
 }
 
-// Apply a specific Java toolchain to ease working on different environments.
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(23)
-    }
-}
-
 application {
     // Define the main class for the application.
     mainClass = "website.lihan.temu.App"
@@ -48,6 +41,19 @@ application {
 tasks.named<Test>("test") {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
+
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
+
+    jvmArgs("-Xmx1G")
+}
+
+tasks.withType<JavaCompile> {
+    options.compilerArgs.addAll(listOf("-Xlint:deprecation"))
+    options.encoding = "UTF-8"
+    sourceCompatibility = "21"
+    targetCompatibility = "21"
 }
 
 configure<com.diffplug.gradle.spotless.SpotlessExtension> {
@@ -55,13 +61,12 @@ configure<com.diffplug.gradle.spotless.SpotlessExtension> {
         target("*.gradle", ".gitattributes", ".gitignore")
 
         trimTrailingWhitespace()
-        indentWithSpaces()
         endWithNewline()
     }
 
-    kotlinGradle {
-        ktlint()
-    }
+    // kotlinGradle {
+    //     ktlint()
+    // }
 
     java {
         importOrder()

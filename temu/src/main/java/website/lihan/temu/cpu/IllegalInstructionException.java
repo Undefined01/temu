@@ -6,6 +6,7 @@ import com.oracle.truffle.api.nodes.ControlFlowException;
 public class IllegalInstructionException extends ControlFlowException {
   private long pc = 0;
   private int instr = 0;
+  private String message = null;
 
   public IllegalInstructionException() {
     super();
@@ -14,6 +15,13 @@ public class IllegalInstructionException extends ControlFlowException {
   @TruffleBoundary
   public static IllegalInstructionException create() {
     return new IllegalInstructionException();
+  }
+
+  @TruffleBoundary
+  public static IllegalInstructionException create(String format, Object... args) {
+    var exception = new IllegalInstructionException();
+    exception.message = String.format(format, args);
+    return exception;
   }
 
   @TruffleBoundary
@@ -26,6 +34,9 @@ public class IllegalInstructionException extends ControlFlowException {
 
   @Override
   public String getMessage() {
+    if (message != null) {
+      return message;
+    }
     return "Illegal instruction at " + Long.toHexString(pc) + ": " + Integer.toHexString(instr);
   }
 }

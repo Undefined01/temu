@@ -7,9 +7,10 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.RootNode;
-
+import org.graalvm.collections.EconomicMap;
 import website.lihan.temu.Rv64BytecodeLanguage;
 import website.lihan.temu.bus.Bus;
+import website.lihan.temu.Rv64Context;
 
 public class Rv64ExecutionRootNode extends RootNode {
   Rv64BytecodeLanguage language;
@@ -29,7 +30,7 @@ public class Rv64ExecutionRootNode extends RootNode {
   public Object execute(VirtualFrame frame) {
     long pc = 0x80000000L;
     while (true) {
-      try{
+      try {
         long pageAddr = pc & PAGE_ADDR_MASK;
         var page = entryPoints.get(pageAddr);
         if (page == null) {

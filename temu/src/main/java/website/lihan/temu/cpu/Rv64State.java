@@ -5,7 +5,8 @@ import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 public final class Rv64State {
   @CompilationFinal(dimensions = 0)
   private final long[] regs = new long[32];
-  
+  public long pc = 0;
+
   public long getReg(int reg) {
     if (reg == 0) {
       return 0;

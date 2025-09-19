@@ -10,8 +10,8 @@ import com.oracle.truffle.api.memory.ByteArraySupport;
 import com.oracle.truffle.api.nodes.BytecodeOSRNode;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
-
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.Utils;
 import website.lihan.temu.bus.Bus;
 
 public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
@@ -19,7 +19,10 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   @CompilationFinal int entryBci;
   @CompilationFinal Rv64State cpu;
   @Child Bus bus;
-  @CompilationFinal(dimensions=1) private byte[] bc;
+
+  @CompilationFinal(dimensions = 1)
+  private byte[] bc;
+
   @CompilationFinal private Object osrMetadata;
 
   private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
@@ -29,7 +32,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     this.baseAddr = baseAddr;
     this.bc = bc;
     this.entryBci = entryBci;
-    
+
     var context = Rv64Context.get(this);
     this.cpu = context.getState();
   }
@@ -56,22 +59,26 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   @BytecodeInterpreterSwitch
   @ExplodeLoop(kind = ExplodeLoop.LoopExplosionKind.MERGE_EXPLODE)
   Object executeFromBci(VirtualFrame frame, int bci) {
-    while (true) {
-      CompilerAsserts.partialEvaluationConstant(bci);
-      int instr = BYTES.getInt(bc, bci);
-      CompilerAsserts.partialEvaluationConstant(instr);
+    try {
+      while (true) {
+        CompilerAsserts.partialEvaluationConstant(bci);
+        int instr = BYTES.getInt(bc, bci);
+        CompilerAsserts.partialEvaluationConstant(instr);
 
-      int nextBci = executeOneInstr(frame, bci, instr);
-      CompilerAsserts.partialEvaluationConstant(nextBci);
-      if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
-        if (BytecodeOSRNode.pollOSRBackEdge(this)) { // OSR can be tried
-          Object result = BytecodeOSRNode.tryOSR(this, nextBci, null, null, frame);
-          if (result != null) { // OSR was performed
-            return result;
+        int nextBci = executeOneInstr(frame, bci, instr);
+        CompilerAsserts.partialEvaluationConstant(nextBci);
+        if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
+          if (BytecodeOSRNode.pollOSRBackEdge(this)) { // OSR can be tried
+            Object result = BytecodeOSRNode.tryOSR(this, nextBci, null, null, frame);
+            if (result != null) { // OSR was performed
+              return result;
+            }
           }
         }
+        bci = nextBci;
       }
-      bci = nextBci;
+    } finally {
+      cpu.pc = getPc(bci);
     }
   }
 
@@ -80,23 +87,30 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     switch (opcode) {
       case Opcodes.ARITHMETIC_IMM -> {
         var i = IInstruct.decode(instr);
-        var res = calcArthimetic(i.funct3, i.funct7, cpu.getReg(i.rs1), i.imm, true);
+        var res = calcArthimeticImm(i.funct3, i.funct7, cpu.getReg(i.rs1), i.imm);
         cpu.setReg(i.rd, res);
       }
       case Opcodes.ARITHMETIC -> {
         var r = RInstruct.decode(instr);
-        var res = calcArthimetic(r.func3, r.func7, cpu.getReg(r.rs1), cpu.getReg(r.rs2), false);
+        var res = calcArthimetic(r.func3, r.func7, cpu.getReg(r.rs1), cpu.getReg(r.rs2));
         cpu.setReg(r.rd, res);
       }
       case Opcodes.ARITHMETIC32_IMM -> {
         var i = IInstruct.decode(instr);
-        var res = calcArthimetic(i.funct3, 0, cpu.getReg(i.rs1) & 0xffffffffL, (long)i.imm & 0xffffffffL, false);
+        long res =
+            calcArthimeticImm32(
+                i.funct3, i.funct7, (int)cpu.getReg(i.rs1), i.imm);
         res = signExtend(res, 32);
         cpu.setReg(i.rd, res);
       }
       case Opcodes.ARITHMETIC32 -> {
         var r = RInstruct.decode(instr);
-        var res = calcArthimetic(r.func3, r.func7, cpu.getReg(r.rs1)& 0xffffffffL, cpu.getReg(r.rs2)& 0xffffffffL, true);
+        long res =
+            calcArthimetic32(
+                r.func3,
+                r.func7,
+                (int)cpu.getReg(r.rs1),
+                (int)cpu.getReg(r.rs2));
         res = signExtend(res, 32);
         cpu.setReg(r.rd, res);
       }
@@ -110,13 +124,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       }
       case Opcodes.JAL -> {
         final var j = JInstruct.decode(instr);
-        var imm20 = (instr >> 31) << 20;
-        var imm10_1 = ((instr >> 21) & 0x3ff) << 1;
-        var imm11 = ((instr >> 20) & 0x1) << 11;
-        var imm19_12 = ((instr >> 12) & 0xff) << 12;
-        var imm = imm20 | imm19_12 | imm11 | imm10_1;
-        int nextBci = bci + imm;
-        // int nextBci = bci + j.imm;
+        int nextBci = bci + j.imm;
         cpu.setReg(j.rd, getPc(bci + 4));
         return tryJump(nextBci);
       }
@@ -137,8 +145,8 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       }
       case Opcodes.LOAD -> doLoad(bci, instr);
       case Opcodes.STORE -> doStore(instr);
-      case Opcodes.HALT -> {
-        throw HaltException.create(getPc(bci));
+      case Opcodes.EBREAK -> {
+        throw HaltException.create(getPc(bci), cpu.getReg(10));
       }
       default -> throw IllegalInstructionException.create(bci, instr);
     }
@@ -156,42 +164,177 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
 
   // @TruffleBoundary
   private int tryJumpPc(long nextPc) {
-    // CompilerAsserts.partialEvaluationConstant(baseAddr);
-    // CompilerAsserts.partialEvaluationConstant(bc.length);
-    // if (nextPc >= baseAddr || nextPc < baseAddr + bc.length) {
-    //   return (int) (nextPc - baseAddr);
-    // }
+    CompilerAsserts.partialEvaluationConstant(baseAddr);
+    CompilerAsserts.partialEvaluationConstant(bc.length);
+    if (nextPc >= baseAddr || nextPc < baseAddr + bc.length) {
+      return (int) (nextPc - baseAddr);
+    }
     throw JumpException.create(nextPc);
   }
 
   private long getPc(int bci) {
-    return baseAddr + (long)bci;
+    return baseAddr + (long) bci;
   }
 
-  private long calcArthimetic(int func3, int func7, long op1, long op2, boolean isImm) {
+  private long calcArthimetic(int func3, int func7, long op1, long op2) {
+    var shamt = op2 & 0x3f;
     return switch (func3) {
-      case 0b000 -> {
-        if (isImm || func7 == 0) {
-          yield op1 + op2;
-        } else {
-          yield op1 - op2;
-        }
-      }
-      case 0b001 -> op1 << op2;
+      case 0b000 -> switch (func7) {
+          case 0b0000000 -> op1 + op2;
+          case 0b0100000 -> op1 - op2;
+          case 0b0000001 -> op1 * op2;
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b001 -> switch (func7) {
+          case 0b0000000 -> op1 << shamt;
+          case 0b0000001 -> Math.multiplyHigh(op1, op2);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b010 -> switch (func7) {
+          case 0b0000000 -> op1 < op2 ? 1 : 0;
+          case 0b0000001 -> Utils.signedUnsignedMultiplyHigh(op1, op2);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b011 -> switch (func7) {
+          case 0b0000000 -> Long.compareUnsigned(op1, op2) < 0 ? 1 : 0;
+          case 0b0000001 -> Math.unsignedMultiplyHigh(op1, op2);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b100 -> switch (func7) {
+          case 0b0000000 -> op1 ^ op2;
+          case 0b0000001 -> {
+            if (op2 == 0) {
+              // Division by zero
+              yield -1;
+            }
+            if (op1 == Long.MIN_VALUE && op2 == -1) {
+              // Overflow
+              yield op1;
+            }
+            Utils.printf("%d / %d = %d\n", op1, op2, op1 / op2);
+            yield op1 / op2;
+          }
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b101 -> switch (func7) {
+          case 0b0000000 -> op1 >>> shamt;
+          case 0b0100000 -> op1 >> shamt;
+          case 0b0000001 -> op2 != 0 ? Long.divideUnsigned(op1, op2) : -1;
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b110 -> switch (func7) {
+          case 0b0000000 -> op1 | op2;
+          case 0b0000001 -> {
+            if (op2 == 0) {
+              // Division by zero
+              yield op1;
+            }
+            if (op1 == Long.MIN_VALUE && op2 == -1) {
+              // Overflow
+              yield 0;
+            }
+            yield op1 % op2;
+          }
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b111 -> switch (func7) {
+          case 0b0000000 -> op1 & op2;
+          case 0b0000001 -> op2 != 0 ? Long.remainderUnsigned(op1, op2) : op1;
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
+    };
+  }
+
+  private long calcArthimeticImm(int func3, int func7, long op1, long op2) {
+    return switch (func3) {
+      case 0b000 -> op1 + op2;
+      case 0b001 -> op1 << (op2 & 0x3f);
       case 0b010 -> op1 < op2 ? 1 : 0;
       case 0b011 -> Long.compareUnsigned(op1, op2) < 0 ? 1 : 0;
       case 0b100 -> op1 ^ op2;
       case 0b101 -> {
         op2 &= 0x3f;
-        if (func7 == 0) {
-          yield op1 >>> op2;
-        } else {
-          yield op1 >> op2;
-        }
+        yield switch (func7 >> 1) {
+          case 0b000000 -> op1 >>> op2;
+          case 0b010000 -> op1 >> op2;
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+        };
       }
       case 0b110 -> op1 | op2;
       case 0b111 -> op1 & op2;
-      default -> throw InternalException.create(invalidFunc3(func3));
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
+    };
+  }
+
+  private int calcArthimetic32(int func3, int func7, int op1, int op2) {
+    var shamt = op2 & 0x1f;
+    return switch (func3) {
+      case 0b000 -> switch (func7) {
+          case 0b0000000 -> op1 + op2;
+          case 0b0100000 -> op1 - op2;
+          case 0b0000001 -> op1 * op2;
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+        };
+      case 0b001 -> switch (func7) {
+        case 0b0000000 -> op1 << shamt;
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b100 -> switch (func7) {
+        case 0b0000001 -> {
+          if (op2 == 0) {
+            // Division by zero
+            yield -1;
+          }
+          if (op1 == Integer.MIN_VALUE && op2 == -1) {
+            // Overflow
+            yield op1;
+          }
+          yield op1 / op2;
+        }
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b101 -> switch (func7) {
+        case 0b0000000 -> op1 >>> shamt;
+        case 0b0100000 -> op1 >> shamt;
+        case 0b0000001 -> op2 != 0 ? Integer.divideUnsigned(op1, op2) : -1;
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b110 -> switch (func7) {
+        case 0b0000001 -> {
+          if (op2 == 0) {
+            // Division by zero
+            yield op1;
+          }
+          if (op1 == Integer.MIN_VALUE && op2 == -1) {
+            // Overflow
+            yield 0;
+          }
+          yield op1 % op2;
+        }
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      case 0b111 -> switch (func7) {
+        case 0b0000001 -> op2 != 0 ? Integer.remainderUnsigned(op1, op2) : op1;
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      };
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
+    };
+  }
+
+  private long calcArthimeticImm32(int func3, int func7, int op1, int op2) {
+    var shamt = op2 & 0x1f;
+    return switch (func3) {
+      case 0b000 -> op1 + op2;
+      case 0b001 -> op1 << shamt;
+      case 0b101 -> switch (func7) {
+          case 0b0000000 -> op1 >>> shamt;
+          case 0b0100000 -> op1 >> shamt;
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+        };
+      case 0b110 -> op1 | op2;
+      case 0b111 -> op1 & op2;
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
     };
   }
 
@@ -206,9 +349,9 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       case 0b001 -> op1 != op2;
       case 0b100 -> op1 < op2;
       case 0b101 -> op1 >= op2;
-      case 0b110 -> op1 < op2;
-      case 0b111 -> op1 >= op2;
-      default -> throw InternalException.create(String.valueOf(func3));
+      case 0b110 -> Long.compareUnsigned(op1, op2) < 0;
+      case 0b111 -> Long.compareUnsigned(op1, op2) >= 0;
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
     };
   }
 
@@ -257,6 +400,10 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     return (value << (64 - bits)) >> (64 - bits);
   }
 
+  private static int signExtend32(int value, int bits) {
+    return (value << (64 - bits)) >> (64 - bits);
+  }
+
   static record IInstruct(int opcode, int rd, int rs1, int funct3, int funct7, int imm) {
     public static IInstruct decode(int instr) {
       var opcode = instr & 0x7f;
@@ -264,7 +411,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       var funct3 = (instr >> 12) & 0x7;
       var funct7 = (instr >> 25) & 0x7f;
       var rs1 = (instr >> 15) & 0x1f;
-      var imm = (instr >> 20);
+      var imm = signExtend32(instr >> 20, 12);
       return new IInstruct(opcode, rd, rs1, funct3, funct7, imm);
     }
   }
@@ -285,7 +432,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     public static UInstruct decode(int instr) {
       var opcode = instr & 0x7f;
       var rd = (instr >> 7) & 0x1f;
-      var imm = instr & 0xfffff000;
+      var imm = (instr >> 12) << 12;
       return new UInstruct(opcode, rd, imm);
     }
   }
@@ -298,7 +445,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       var funct3 = (instr >> 12) & 0x7;
       var rs1 = (instr >> 15) & 0x1f;
       var rs2 = (instr >> 20) & 0x1f;
-      var imm = imm11_5 | imm4_0;
+      var imm = signExtend32(imm11_5 | imm4_0, 12);
       return new SInstruct(opcode, rs1, rs2, funct3, imm);
     }
   }
@@ -313,7 +460,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       var imm11 = ((instr >> 7) & 0x1) << 11;
       var imm10_5 = ((instr >> 25) & 0x3f) << 5;
       var imm4_1 = ((instr >> 8) & 0xf) << 1;
-      var imm = imm12 | imm11 | imm10_5 | imm4_1;
+      var imm = signExtend32(imm12 | imm11 | imm10_5 | imm4_1, 13);
       return new BInstruct(opcode, rs1, rs2, funct3, imm);
     }
   }
@@ -326,7 +473,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       var imm10_1 = ((instr >> 21) & 0x3ff) << 1;
       var imm11 = ((instr >> 20) & 0x1) << 11;
       var imm19_12 = ((instr >> 12) & 0xff) << 12;
-      var imm = imm20 | imm19_12 | imm11 | imm10_1;
+      var imm = signExtend32(imm20 | imm19_12 | imm11 | imm10_1, 21);
       return new JInstruct(opcode, rd, imm);
     }
   }

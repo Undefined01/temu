@@ -1,7 +1,5 @@
 package website.lihan.temu;
 
-import java.util.Objects;
-
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.TruffleLanguage;
 import com.oracle.truffle.api.interop.InteropLibrary;
@@ -17,13 +15,13 @@ import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.DynamicObjectLibrary;
 import com.oracle.truffle.api.object.Shape;
-
+import java.util.Objects;
 import website.lihan.temu.bus.Bus;
 import website.lihan.temu.cpu.Rv64State;
 
 public final class Rv64Context {
-  private static final TruffleLanguage.ContextReference<Rv64Context> REF = TruffleLanguage.ContextReference
-      .create(Rv64BytecodeLanguage.class);
+  private static final TruffleLanguage.ContextReference<Rv64Context> REF =
+      TruffleLanguage.ContextReference.create(Rv64BytecodeLanguage.class);
 
   private final Rv64BytecodeLanguage language;
 
@@ -53,7 +51,9 @@ public final class Rv64Context {
         regs[i] = state.getReg(i);
       }
       objs.writeMember(obj, "registers", new TruffleList(regs));
-    } catch (UnknownIdentifierException | UnsupportedMessageException | UnsupportedTypeException e) {
+    } catch (UnknownIdentifierException
+        | UnsupportedMessageException
+        | UnsupportedTypeException e) {
       throw new RuntimeException(e);
     }
     return obj;
@@ -73,13 +73,13 @@ final class Scope extends DynamicObject {
 
   @ExportMessage
   Class<? extends TruffleLanguage<?>> getLanguage() {
-      return Rv64BytecodeLanguage.class;
+    return Rv64BytecodeLanguage.class;
   }
 
   @ExportMessage
   @CompilerDirectives.TruffleBoundary
   Object toDisplayString(boolean allowSideEffects) {
-          return Objects.toString(this);
+    return Objects.toString(this);
   }
 
   @ExportMessage
@@ -93,31 +93,27 @@ final class Scope extends DynamicObject {
   }
 
   @ExportMessage
-  Object getMembers(@SuppressWarnings("unused") boolean includeInternal,
+  Object getMembers(
+      @SuppressWarnings("unused") boolean includeInternal,
       @CachedLibrary("this") DynamicObjectLibrary objectLibrary) {
     return new TruffleList(objectLibrary.getKeyArray(this));
   }
 
   @ExportMessage(name = "isMemberReadable")
   @ExportMessage(name = "isMemberModifiable")
-  boolean existsMember(String member,
-      @CachedLibrary("this") DynamicObjectLibrary objectLibrary) {
+  boolean existsMember(String member, @CachedLibrary("this") DynamicObjectLibrary objectLibrary) {
     return objectLibrary.containsKey(this, member);
   }
 
   @ExportMessage
-  boolean isMemberInsertable(String member,
-                  @CachedLibrary("this") InteropLibrary receivers) {
-      return !receivers.isMemberExisting(this, member);
+  boolean isMemberInsertable(String member, @CachedLibrary("this") InteropLibrary receivers) {
+    return !receivers.isMemberExisting(this, member);
   }
 
-  /**
-   * {@link DynamicObjectLibrary} provides the polymorphic inline cache for
-   * reading properties.
-   */
+  /** {@link DynamicObjectLibrary} provides the polymorphic inline cache for reading properties. */
   @ExportMessage
-  Object readMember(String name,
-      @CachedLibrary("this") DynamicObjectLibrary objectLibrary) throws UnknownIdentifierException {
+  Object readMember(String name, @CachedLibrary("this") DynamicObjectLibrary objectLibrary)
+      throws UnknownIdentifierException {
     Object result = objectLibrary.getOrDefault(this, name, null);
     if (result == null) {
       /* Property does not exist. */
@@ -127,9 +123,9 @@ final class Scope extends DynamicObject {
   }
 
   @ExportMessage
-  void writeMember(String name, Object value,
-                  @CachedLibrary("this") DynamicObjectLibrary objectLibrary) {
-      objectLibrary.put(this, name, value);
+  void writeMember(
+      String name, Object value, @CachedLibrary("this") DynamicObjectLibrary objectLibrary) {
+    objectLibrary.put(this, name, value);
   }
 }
 

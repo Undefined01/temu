@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
-
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
@@ -44,17 +43,17 @@ public class App {
       // @formatter:on
     } else {
       var bytes = Files.readAllBytes(Path.of(file));
-      source = Source.newBuilder(LANG, ByteSequence.create(bytes), file).interactive(INTERACTIVE).build();
+      source =
+          Source.newBuilder(LANG, ByteSequence.create(bytes), file)
+              .interactive(INTERACTIVE)
+              .build();
     }
 
     System.exit(executeSource(source, System.in, System.out, options));
   }
 
   private static int executeSource(
-      Source source,
-      InputStream in,
-      PrintStream out,
-      Map<String, String> options) {
+      Source source, InputStream in, PrintStream out, Map<String, String> options) {
     Context context;
     PrintStream err = System.err;
     try {

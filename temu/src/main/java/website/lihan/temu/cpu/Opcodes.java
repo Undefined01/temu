@@ -16,6 +16,5 @@ public class Opcodes {
   public static final int ARITHMETIC32 = 0b0111011;
   public static final int ARITHMETIC32_IMM = 0b0011011;
 
-  // custom opcodes for the emulator
-  public static final int HALT = 0b01101011;
+  public static final int EBREAK = 0b1110011;
 }
