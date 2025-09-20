@@ -3,7 +3,7 @@ package website.lihan.temu.cpu;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 
 public class InternalException extends RuntimeException {
-  public InternalException(String message) {
+  private InternalException(String message) {
     super(message);
   }
 

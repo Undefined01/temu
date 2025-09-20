@@ -68,7 +68,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         int nextBci = executeOneInstr(frame, bci, instr);
         CompilerAsserts.partialEvaluationConstant(nextBci);
         if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
-          if (BytecodeOSRNode.pollOSRBackEdge(this)) { // OSR can be tried
+          if (BytecodeOSRNode.pollOSRBackEdge(this, 1)) { // OSR can be tried
             Object result = BytecodeOSRNode.tryOSR(this, nextBci, null, null, frame);
             if (result != null) { // OSR was performed
               return result;
@@ -92,7 +92,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       }
       case Opcodes.ARITHMETIC -> {
         var r = RInstruct.decode(instr);
-        var res = calcArthimetic(r.func3, r.func7, cpu.getReg(r.rs1), cpu.getReg(r.rs2));
+        var res = calcArthimetic(r.funct3, r.funct7, cpu.getReg(r.rs1), cpu.getReg(r.rs2));
         cpu.setReg(r.rd, res);
       }
       case Opcodes.ARITHMETIC32_IMM -> {
@@ -107,8 +107,8 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         var r = RInstruct.decode(instr);
         long res =
             calcArthimetic32(
-                r.func3,
-                r.func7,
+                r.funct3,
+                r.funct7,
                 (int)cpu.getReg(r.rs1),
                 (int)cpu.getReg(r.rs2));
         res = signExtend(res, 32);
@@ -155,14 +155,14 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
 
   private int tryJump(int nextBci) {
     CompilerAsserts.partialEvaluationConstant(nextBci);
-    CompilerAsserts.partialEvaluationConstant(bc.length);
-    if (nextBci >= 0 || nextBci < bc.length) {
+    // if (nextBci >= 0 || nextBci < bc.length) {
       return nextBci;
-    }
-    throw JumpException.create(getPc(nextBci));
+    // }
+    // throw JumpException.create(getPc(nextBci));
   }
 
   // @TruffleBoundary
+  @TruffleBoundary
   private int tryJumpPc(long nextPc) {
     CompilerAsserts.partialEvaluationConstant(baseAddr);
     CompilerAsserts.partialEvaluationConstant(bc.length);
@@ -176,31 +176,31 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     return baseAddr + (long) bci;
   }
 
-  private long calcArthimetic(int func3, int func7, long op1, long op2) {
+  private long calcArthimetic(int funct3, int funct7, long op1, long op2) {
     var shamt = op2 & 0x3f;
-    return switch (func3) {
-      case 0b000 -> switch (func7) {
+    return switch (funct3) {
+      case 0b000 -> switch (funct7) {
           case 0b0000000 -> op1 + op2;
           case 0b0100000 -> op1 - op2;
           case 0b0000001 -> op1 * op2;
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b001 -> switch (func7) {
+      case 0b001 -> switch (funct7) {
           case 0b0000000 -> op1 << shamt;
           case 0b0000001 -> Math.multiplyHigh(op1, op2);
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b010 -> switch (func7) {
+      case 0b010 -> switch (funct7) {
           case 0b0000000 -> op1 < op2 ? 1 : 0;
           case 0b0000001 -> Utils.signedUnsignedMultiplyHigh(op1, op2);
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b011 -> switch (func7) {
+      case 0b011 -> switch (funct7) {
           case 0b0000000 -> Long.compareUnsigned(op1, op2) < 0 ? 1 : 0;
           case 0b0000001 -> Math.unsignedMultiplyHigh(op1, op2);
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b100 -> switch (func7) {
+      case 0b100 -> switch (funct7) {
           case 0b0000000 -> op1 ^ op2;
           case 0b0000001 -> {
             if (op2 == 0) {
@@ -214,15 +214,15 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
             Utils.printf("%d / %d = %d\n", op1, op2, op1 / op2);
             yield op1 / op2;
           }
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b101 -> switch (func7) {
+      case 0b101 -> switch (funct7) {
           case 0b0000000 -> op1 >>> shamt;
           case 0b0100000 -> op1 >> shamt;
           case 0b0000001 -> op2 != 0 ? Long.divideUnsigned(op1, op2) : -1;
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b110 -> switch (func7) {
+      case 0b110 -> switch (funct7) {
           case 0b0000000 -> op1 | op2;
           case 0b0000001 -> {
             if (op2 == 0) {
@@ -235,52 +235,50 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
             }
             yield op1 % op2;
           }
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b111 -> switch (func7) {
+      case 0b111 -> switch (funct7) {
           case 0b0000000 -> op1 & op2;
           case 0b0000001 -> op2 != 0 ? Long.remainderUnsigned(op1, op2) : op1;
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", funct3);
     };
   }
 
-  private long calcArthimeticImm(int func3, int func7, long op1, long op2) {
-    return switch (func3) {
+  private long calcArthimeticImm(int funct3, int funct7, long op1, long op2) {
+    var shamt = op2 & 0x3f;
+    return switch (funct3) {
       case 0b000 -> op1 + op2;
-      case 0b001 -> op1 << (op2 & 0x3f);
+      case 0b001 -> op1 << shamt;
       case 0b010 -> op1 < op2 ? 1 : 0;
       case 0b011 -> Long.compareUnsigned(op1, op2) < 0 ? 1 : 0;
       case 0b100 -> op1 ^ op2;
-      case 0b101 -> {
-        op2 &= 0x3f;
-        yield switch (func7 >> 1) {
-          case 0b000000 -> op1 >>> op2;
-          case 0b010000 -> op1 >> op2;
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+      case 0b101 -> switch (funct7 >> 1) {
+          case 0b000000 -> op1 >>> shamt;
+          case 0b010000 -> op1 >> shamt;
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
         };
-      }
       case 0b110 -> op1 | op2;
       case 0b111 -> op1 & op2;
-      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", funct3);
     };
   }
 
-  private int calcArthimetic32(int func3, int func7, int op1, int op2) {
+  private int calcArthimetic32(int funct3, int funct7, int op1, int op2) {
     var shamt = op2 & 0x1f;
-    return switch (func3) {
-      case 0b000 -> switch (func7) {
+    return switch (funct3) {
+      case 0b000 -> switch (funct7) {
           case 0b0000000 -> op1 + op2;
           case 0b0100000 -> op1 - op2;
           case 0b0000001 -> op1 * op2;
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
         };
-      case 0b001 -> switch (func7) {
+      case 0b001 -> switch (funct7) {
         case 0b0000000 -> op1 << shamt;
-        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b100 -> switch (func7) {
+      case 0b100 -> switch (funct7) {
         case 0b0000001 -> {
           if (op2 == 0) {
             // Division by zero
@@ -292,15 +290,15 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           }
           yield op1 / op2;
         }
-        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b101 -> switch (func7) {
+      case 0b101 -> switch (funct7) {
         case 0b0000000 -> op1 >>> shamt;
         case 0b0100000 -> op1 >> shamt;
         case 0b0000001 -> op2 != 0 ? Integer.divideUnsigned(op1, op2) : -1;
-        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b110 -> switch (func7) {
+      case 0b110 -> switch (funct7) {
         case 0b0000001 -> {
           if (op2 == 0) {
             // Division by zero
@@ -312,46 +310,41 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           }
           yield op1 % op2;
         }
-        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      case 0b111 -> switch (func7) {
+      case 0b111 -> switch (funct7) {
         case 0b0000001 -> op2 != 0 ? Integer.remainderUnsigned(op1, op2) : op1;
-        default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+        default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
       };
-      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", funct3);
     };
   }
 
-  private long calcArthimeticImm32(int func3, int func7, int op1, int op2) {
+  private long calcArthimeticImm32(int funct3, int funct7, int op1, int op2) {
     var shamt = op2 & 0x1f;
-    return switch (func3) {
+    return switch (funct3) {
       case 0b000 -> op1 + op2;
       case 0b001 -> op1 << shamt;
-      case 0b101 -> switch (func7) {
+      case 0b101 -> switch (funct7) {
           case 0b0000000 -> op1 >>> shamt;
           case 0b0100000 -> op1 >> shamt;
-          default -> throw IllegalInstructionException.create("Invalid funct7 %d", func7);
+          default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
         };
       case 0b110 -> op1 | op2;
       case 0b111 -> op1 & op2;
-      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", funct3);
     };
   }
 
-  @TruffleBoundary
-  private String invalidFunc3(int func3) {
-    return "Invalid funct3 " + func3;
-  }
-
-  private boolean calcComparsion(int func3, long op1, long op2) {
-    return switch (func3) {
+  private boolean calcComparsion(int funct3, long op1, long op2) {
+    return switch (funct3) {
       case 0b000 -> op1 == op2;
       case 0b001 -> op1 != op2;
       case 0b100 -> op1 < op2;
       case 0b101 -> op1 >= op2;
       case 0b110 -> Long.compareUnsigned(op1, op2) < 0;
       case 0b111 -> Long.compareUnsigned(op1, op2) >= 0;
-      default -> throw IllegalInstructionException.create("Invalid funct3 %d", func3);
+      default -> throw IllegalInstructionException.create("Invalid funct3 %d", funct3);
     };
   }
 
@@ -390,9 +383,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           default -> throw IllegalInstructionException.create(entryBci, instr);
         };
     long value = cpu.getReg(s.rs2);
-    for (int i = 0; i < length; i++) {
-      data[i] = (byte) (value >> (i * 8));
-    }
+    BYTES.putLong(data, 0, value);
     bus.executeWrite(cpu.getReg(s.rs1) + s.imm, data, length);
   }
 
@@ -416,15 +407,15 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     }
   }
 
-  static record RInstruct(int opcode, int rd, int rs1, int rs2, int func3, int func7) {
+  static record RInstruct(int opcode, int rd, int rs1, int rs2, int funct3, int funct7) {
     public static RInstruct decode(int instr) {
       var opcode = instr & 0x7f;
       var rd = (instr >> 7) & 0x1f;
-      var func3 = (instr >> 12) & 0x7;
+      var funct3 = (instr >> 12) & 0x7;
       var rs1 = (instr >> 15) & 0x1f;
       var rs2 = (instr >> 20) & 0x1f;
-      var func7 = (instr >> 25);
-      return new RInstruct(opcode, rd, rs1, rs2, func3, func7);
+      var funct7 = (instr >> 25);
+      return new RInstruct(opcode, rd, rs1, rs2, funct3, funct7);
     }
   }
 

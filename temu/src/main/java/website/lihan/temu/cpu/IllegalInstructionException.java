@@ -8,7 +8,7 @@ public class IllegalInstructionException extends ControlFlowException {
   private int instr = 0;
   private String message = null;
 
-  public IllegalInstructionException() {
+  private IllegalInstructionException() {
     super();
   }
 

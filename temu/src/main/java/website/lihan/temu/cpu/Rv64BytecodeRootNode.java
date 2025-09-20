@@ -22,15 +22,14 @@ public class Rv64BytecodeRootNode extends RootNode {
       try {
         bytecodeNode.execute(frame);
       } catch (IllegalInstructionException e) {
-        Utils.printf("%s", e.toString());
         var context = Rv64Context.get(this);
         pc = context.getState().pc;
-        Utils.printf("At PC = %08x\n", pc);
+        Utils.printf("%s at PC = %08x\n", e, pc);
         return 0;
       } catch (JumpException e) {
         pc = e.getTargetPc();
       } catch (HaltException e) {
-        Utils.printf("%s", e.toString());
+        Utils.printf("%s\n", e);
         return 0;
       }
     }

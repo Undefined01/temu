@@ -6,7 +6,7 @@ import com.oracle.truffle.api.nodes.ControlFlowException;
 public class JumpException extends ControlFlowException {
   private long pc = 0;
 
-  public JumpException() {
+  private JumpException() {
     super();
   }
 

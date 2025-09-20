@@ -7,7 +7,7 @@ public class HaltException extends ControlFlowException {
   private long pc = 0;
   private long exitCode = 0;
 
-  public HaltException() {
+  private HaltException() {
     super();
   }
 
