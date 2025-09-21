@@ -6,12 +6,8 @@ import com.oracle.truffle.api.TruffleLanguage.ContextPolicy;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.Shape;
 import com.oracle.truffle.api.strings.TruffleString;
-import website.lihan.temu.bus.Bus;
-import website.lihan.temu.bus.Memory;
-import website.lihan.temu.bus.RTC;
-import website.lihan.temu.bus.SerialPort;
-import website.lihan.temu.cpu.Rv64BytecodeNode;
-import website.lihan.temu.cpu.Rv64BytecodeRootNode;
+import website.lihan.temu.cpu.Rv64ExecutionRootNode;
+import website.lihan.temu.device.Bus;
 
 @TruffleLanguage.Registration(
     id = Rv64BytecodeLanguage.ID,
@@ -36,13 +32,10 @@ public final class Rv64BytecodeLanguage extends TruffleLanguage<Rv64Context> {
   protected CallTarget parse(ParsingRequest request) throws Exception {
     var source = request.getSource();
 
-    var memory = new Memory();
     var bytecode = source.getBytes().toByteArray();
-    memory.write(0, bytecode, bytecode.length);
-    var bus = new Bus(new Object[] {memory, new SerialPort(), new RTC()});
-    // var evalRootNode = new Rv64ExecutionRootNode(this, bus);
-    var bytecodeNode = new Rv64BytecodeNode(bus, 0x80000000L, bytecode, 0);
-    var evalRootNode = new Rv64BytecodeRootNode(this, bytecodeNode);
+    var evalRootNode = new Rv64ExecutionRootNode(this, bytecode);
+    var context = Rv64Context.get(evalRootNode);
+    context.getBus().executeWrite(0x80000000L, bytecode, bytecode.length);
 
     return evalRootNode.getCallTarget();
   }
@@ -54,7 +47,7 @@ public final class Rv64BytecodeLanguage extends TruffleLanguage<Rv64Context> {
 
   @Override
   protected Rv64Context createContext(Env env) {
-    var context = new Rv64Context(this, null);
+    var context = new Rv64Context(this, Bus.withDefault());
     return context;
   }
 }

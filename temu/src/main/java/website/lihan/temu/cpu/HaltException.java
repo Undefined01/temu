@@ -7,9 +7,7 @@ public class HaltException extends ControlFlowException {
   private long pc = 0;
   private long exitCode = 0;
 
-  private HaltException() {
-    super();
-  }
+  private HaltException() {}
 
   @TruffleBoundary
   public static HaltException create(long pc, long exitCode) {

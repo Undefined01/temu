@@ -1,11 +1,11 @@
-package website.lihan.temu.bus;
+package website.lihan.temu.device;
 
 import com.oracle.truffle.api.library.GenerateLibrary;
 import com.oracle.truffle.api.library.Library;
 import com.oracle.truffle.api.library.LibraryFactory;
 
 @GenerateLibrary
-public abstract class RegionLibrary extends Library {
+public abstract class DeviceLibrary extends Library {
   public abstract long getStartAddress(Object receiver);
 
   public abstract long getEndAddress(Object receiver);
@@ -18,14 +18,14 @@ public abstract class RegionLibrary extends Library {
     return -1;
   }
 
-  public static LibraryFactory<RegionLibrary> getFactory() {
-      return FACTORY;
+  public static LibraryFactory<DeviceLibrary> getFactory() {
+    return FACTORY;
   }
 
-  public static RegionLibrary getUncached() {
-      return FACTORY.getUncached();
+  public static DeviceLibrary getUncached() {
+    return FACTORY.getUncached();
   }
 
-  private static final LibraryFactory<RegionLibrary> FACTORY =
-              LibraryFactory.resolve(RegionLibrary.class);
+  private static final LibraryFactory<DeviceLibrary> FACTORY =
+      LibraryFactory.resolve(DeviceLibrary.class);
 }

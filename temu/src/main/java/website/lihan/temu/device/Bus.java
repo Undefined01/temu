@@ -1,23 +1,23 @@
-package website.lihan.temu.bus;
+package website.lihan.temu.device;
 
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
-import com.oracle.truffle.api.nodes.Node.Children;
 import com.oracle.truffle.api.nodes.Node;
+import com.oracle.truffle.api.nodes.Node.Children;
 import website.lihan.temu.Utils;
 
 public final class Bus extends Node {
   @CompilationFinal(dimensions = 1)
   private Object[] regions;
-  @Children
-  private RegionLibrary[] regionLibraries;
+
+  @Children private DeviceLibrary[] regionLibraries;
 
   public Bus(Object[] regions) {
     this.regions = regions;
-    this.regionLibraries = new RegionLibrary[regions.length];
+    this.regionLibraries = new DeviceLibrary[regions.length];
     for (int i = 0; i < regions.length; i++) {
-      this.regionLibraries[i] = RegionLibrary.getFactory().create(regions[i]);
+      this.regionLibraries[i] = DeviceLibrary.getFactory().create(regions[i]);
     }
   }
 
@@ -26,13 +26,14 @@ public final class Bus extends Node {
     for (int i = 0; i < regions.length; i++) {
       var region = regions[i];
       var regionLib = regionLibraries[i];
-      if (regionLib.getStartAddress(region) <= address && address < regionLib.getEndAddress(region)) {
+      if (regionLib.getStartAddress(region) <= address
+          && address < regionLib.getEndAddress(region)) {
         address -= regionLib.getStartAddress(region);
         return regionLib.read(region, address, data, length);
       }
     }
-      Utils.printf("[Bus] read from invalid address: 0x%08x\n", address);
-      return -1;
+    Utils.printf("[Bus] read from invalid address: 0x%08x\n", address);
+    return -1;
   }
 
   @TruffleBoundary
@@ -53,10 +54,15 @@ public final class Bus extends Node {
     for (int i = 0; i < regions.length; i++) {
       var region = regions[i];
       var regionLib = regionLibraries[i];
-      if (regionLib.getStartAddress(region) <= address && address < regionLib.getEndAddress(region)) {
+      if (regionLib.getStartAddress(region) <= address
+          && address < regionLib.getEndAddress(region)) {
         return i;
       }
     }
     return -1;
+  }
+
+  public static Bus withDefault() {
+    return new Bus(new Object[] {new Memory(), new RTC(), new SerialPort()});
   }
 }

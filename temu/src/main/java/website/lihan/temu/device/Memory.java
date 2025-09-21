@@ -1,15 +1,14 @@
-package website.lihan.temu.bus;
+package website.lihan.temu.device;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
+import com.oracle.truffle.api.nodes.ExplodeLoop;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import website.lihan.temu.Utils;
 
-@ExportLibrary(RegionLibrary.class)
+@ExportLibrary(DeviceLibrary.class)
 public final class Memory {
   private final long startAddress;
   private final long endAddress;
@@ -35,24 +34,24 @@ public final class Memory {
     }
   }
 
-  @ExportMessage 
+  @ExportMessage
   public long getStartAddress() {
     return startAddress;
   }
 
-  @ExportMessage 
+  @ExportMessage
   public long getEndAddress() {
     return endAddress;
   }
 
-  @ExportMessage 
+  @ExportMessage
   @ExplodeLoop
   public int read(long address, byte[] buffer, int length) {
     System.arraycopy(memory, (int) address, buffer, 0, length);
     return 0;
   }
 
-  @ExportMessage 
+  @ExportMessage
   @ExplodeLoop
   public int write(long address, byte[] buffer, int length) {
     System.arraycopy(buffer, 0, memory, (int) address, length);

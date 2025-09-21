@@ -14,6 +14,6 @@ public class InternalException extends RuntimeException {
 
   @TruffleBoundary
   public static InternalException fromPc(long pc, String message) {
-    return new InternalException("Internal error at " + Long.toHexString(pc) + ": " + message);
+    return new InternalException(String.format("At pc=0x%016x: %s", pc, message));
   }
 }

@@ -1,18 +1,21 @@
-package website.lihan.temu.bus;
+package website.lihan.temu.device;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
+import com.oracle.truffle.api.memory.ByteArraySupport;
 
-@ExportLibrary(RegionLibrary.class)
-public final class SerialPort {
+@ExportLibrary(DeviceLibrary.class)
+public final class RTC {
   public final long baseAddress;
 
-  public SerialPort() {
-    this(0xa00003f8L);
+  private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
+
+  public RTC() {
+    this(0xa0000048L);
   }
 
-  public SerialPort(long baseAddress) {
+  public RTC(long baseAddress) {
     this.baseAddress = baseAddress;
   }
 
@@ -27,17 +30,19 @@ public final class SerialPort {
   }
 
   @ExportMessage
+  @TruffleBoundary
   public int read(long address, byte[] data, int length) {
-    return -1;
+    if (length > 8) return -1;
+
+    long microseconds = System.currentTimeMillis() * 1000;
+    byte[] temp = new byte[8];
+    BYTES.putLong(temp, 0, microseconds);
+    System.arraycopy(temp, 0, data, 0, length);
+    return length;
   }
 
   @ExportMessage
-  @TruffleBoundary
   public int write(long address, byte[] data, int length) {
-    if (address == 0 && length == 1) {
-      System.out.print((char) data[0]);
-      return 0;
-    }
     return -1;
   }
 }

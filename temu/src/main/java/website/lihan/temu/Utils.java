@@ -9,10 +9,10 @@ public class Utils {
   }
 
   public static long signedUnsignedMultiplyHigh(long s, long u) {
-        long high = Math.multiplyHigh(s, u);
-        if (u < 0) {
-            high += s;
-        }
-        return high;
+    long high = Math.multiplyHigh(s, u);
+    if (u < 0) {
+      high += s;
     }
+    return high;
+  }
 }
