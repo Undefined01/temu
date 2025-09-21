@@ -2,12 +2,15 @@ package website.lihan.temu.bus;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
+import com.oracle.truffle.api.library.ExportLibrary;
+import com.oracle.truffle.api.library.ExportMessage;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import website.lihan.temu.Utils;
 
-public final class Memory implements Region {
+@ExportLibrary(RegionLibrary.class)
+public final class Memory {
   private final long startAddress;
   private final long endAddress;
   private final byte[] memory;
@@ -32,24 +35,24 @@ public final class Memory implements Region {
     }
   }
 
-  @Override
+  @ExportMessage 
   public long getStartAddress() {
     return startAddress;
   }
 
-  @Override
+  @ExportMessage 
   public long getEndAddress() {
     return endAddress;
   }
 
-  @Override
+  @ExportMessage 
   @ExplodeLoop
   public int read(long address, byte[] buffer, int length) {
     System.arraycopy(memory, (int) address, buffer, 0, length);
     return 0;
   }
 
-  @Override
+  @ExportMessage 
   @ExplodeLoop
   public int write(long address, byte[] buffer, int length) {
     System.arraycopy(buffer, 0, memory, (int) address, length);

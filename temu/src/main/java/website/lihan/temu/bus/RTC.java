@@ -2,9 +2,12 @@ package website.lihan.temu.bus;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.memory.ByteArraySupport;
+import com.oracle.truffle.api.library.ExportLibrary;
+import com.oracle.truffle.api.library.ExportMessage;
 import website.lihan.temu.Utils;
 
-public class RTC implements Region {
+@ExportLibrary(RegionLibrary.class)
+public final class RTC {
   public final long baseAddress;
 
   private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
@@ -17,17 +20,17 @@ public class RTC implements Region {
     this.baseAddress = baseAddress;
   }
 
-  @Override
+  @ExportMessage
   public long getStartAddress() {
     return baseAddress;
   }
 
-  @Override
+  @ExportMessage
   public long getEndAddress() {
     return baseAddress + 8;
   }
 
-  @Override
+  @ExportMessage
   @TruffleBoundary
   public int read(long address, byte[] data, int length) {
     if (length > 8)
@@ -40,7 +43,7 @@ public class RTC implements Region {
     return length;
   }
 
-  @Override
+  @ExportMessage
   public int write(long address, byte[] data, int length) {
     return -1;
   }

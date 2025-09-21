@@ -18,7 +18,7 @@ public class Rv64BytecodeRootNode extends RootNode {
   @Override
   public Object execute(VirtualFrame frame) {
     long pc = 0x80000000L;
-    while (true) {
+    // while (true) {
       try {
         bytecodeNode.execute(frame);
       } catch (IllegalInstructionException e) {
@@ -26,12 +26,13 @@ public class Rv64BytecodeRootNode extends RootNode {
         pc = context.getState().pc;
         Utils.printf("%s at PC = %08x\n", e, pc);
         return 0;
-      } catch (JumpException e) {
-        pc = e.getTargetPc();
+      // } catch (JumpException e) {
+      //   pc = e.getTargetPc();
       } catch (HaltException e) {
         Utils.printf("%s\n", e);
         return 0;
       }
-    }
+        return 0;
+    // }
   }
 }

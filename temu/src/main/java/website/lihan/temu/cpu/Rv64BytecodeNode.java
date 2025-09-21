@@ -58,15 +58,14 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
 
   @BytecodeInterpreterSwitch
   @ExplodeLoop(kind = ExplodeLoop.LoopExplosionKind.MERGE_EXPLODE)
-  Object executeFromBci(VirtualFrame frame, int bci) {
+  public Object executeFromBci(VirtualFrame frame, int bci) {
     try {
       while (true) {
         CompilerAsserts.partialEvaluationConstant(bci);
         int instr = BYTES.getInt(bc, bci);
-        CompilerAsserts.partialEvaluationConstant(instr);
+        // CompilerAsserts.partialEvaluationConstant(instr);
 
         int nextBci = executeOneInstr(frame, bci, instr);
-        CompilerAsserts.partialEvaluationConstant(nextBci);
         if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
           if (BytecodeOSRNode.pollOSRBackEdge(this, 1)) { // OSR can be tried
             Object result = BytecodeOSRNode.tryOSR(this, nextBci, null, null, frame);
@@ -124,7 +123,12 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       }
       case Opcodes.JAL -> {
         final var j = JInstruct.decode(instr);
-        int nextBci = bci + j.imm;
+        var imm20 = ((instr >> 31) & 0x1) << 20;
+        var imm10_1 = ((instr >> 21) & 0x3ff) << 1;
+        var imm11 = ((instr >> 20) & 0x1) << 11;
+        var imm19_12 = ((instr >> 12) & 0xff) << 12;
+        var imm = signExtend32(imm20 | imm19_12 | imm11 | imm10_1, 21);
+        int nextBci = bci + imm;
         cpu.setReg(j.rd, getPc(bci + 4));
         return tryJump(nextBci);
       }
@@ -136,10 +140,15 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         return tryJumpPc(nextPc);
       }
       case Opcodes.BRANCH -> {
-        var b = BInstruct.decode(instr);
+        final var b = BInstruct.decode(instr);
         var cond = calcComparsion(b.funct3, cpu.getReg(b.rs1), cpu.getReg(b.rs2));
         if (cond) {
-          int nextBci = bci + b.imm;
+          var imm12 = (instr >> 31) << 12;
+          var imm11 = ((instr >> 7) & 0x1) << 11;
+          var imm10_5 = ((instr >> 25) & 0x3f) << 5;
+          var imm4_1 = ((instr >> 8) & 0xf) << 1;
+          var imm = signExtend32(imm12 | imm11 | imm10_5 | imm4_1, 13);
+          int nextBci = bci + imm;
           return tryJump(nextBci);
         }
       }
@@ -150,26 +159,21 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       }
       default -> throw IllegalInstructionException.create(bci, instr);
     }
-    return tryJump(bci + 4);
+    return bci + 4;
   }
 
   private int tryJump(int nextBci) {
-    CompilerAsserts.partialEvaluationConstant(nextBci);
     // if (nextBci >= 0 || nextBci < bc.length) {
       return nextBci;
     // }
     // throw JumpException.create(getPc(nextBci));
   }
 
-  // @TruffleBoundary
-  @TruffleBoundary
   private int tryJumpPc(long nextPc) {
-    CompilerAsserts.partialEvaluationConstant(baseAddr);
-    CompilerAsserts.partialEvaluationConstant(bc.length);
-    if (nextPc >= baseAddr || nextPc < baseAddr + bc.length) {
+    // if (nextPc >= baseAddr || nextPc < baseAddr + bc.length) {
       return (int) (nextPc - baseAddr);
-    }
-    throw JumpException.create(nextPc);
+    // }
+    // throw JumpException.create(nextPc);
   }
 
   private long getPc(int bci) {
@@ -211,7 +215,6 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
               // Overflow
               yield op1;
             }
-            Utils.printf("%d / %d = %d\n", op1, op2, op1 / op2);
             yield op1 / op2;
           }
           default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);

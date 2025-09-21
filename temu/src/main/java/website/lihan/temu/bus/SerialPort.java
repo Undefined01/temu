@@ -1,8 +1,11 @@
 package website.lihan.temu.bus;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.library.ExportLibrary;
+import com.oracle.truffle.api.library.ExportMessage;
 
-public class SerialPort implements Region {
+@ExportLibrary(RegionLibrary.class)
+public final class SerialPort {
   public final long baseAddress;
 
   public SerialPort() {
@@ -13,22 +16,22 @@ public class SerialPort implements Region {
     this.baseAddress = baseAddress;
   }
 
-  @Override
+  @ExportMessage
   public long getStartAddress() {
     return baseAddress;
   }
 
-  @Override
+  @ExportMessage
   public long getEndAddress() {
     return baseAddress + 8;
   }
 
-  @Override
+  @ExportMessage
   public int read(long address, byte[] data, int length) {
     return -1;
   }
 
-  @Override
+  @ExportMessage
   @TruffleBoundary
   public int write(long address, byte[] data, int length) {
     if (address == 0 && length == 1) {
