@@ -64,7 +64,6 @@ public class EmulatorGUI {
   }
 
   private void handleKeyPressed(KeyEvent event) {
-    System.err.println("Key Pressed: " + event.getCode() + event);
     if (keyboard != null) {
       keyboard.sendKey(event.getCode(), true);
     }
