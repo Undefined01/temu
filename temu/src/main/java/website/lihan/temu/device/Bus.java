@@ -5,6 +5,7 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.Node.Children;
+import website.lihan.temu.EmulatorGUI;
 import website.lihan.temu.Utils;
 
 public final class Bus extends Node {
@@ -62,7 +63,22 @@ public final class Bus extends Node {
     return -1;
   }
 
+  @TruffleBoundary
   public static Bus withDefault() {
-    return new Bus(new Object[] {new Memory(), new RTC(), new SerialPort()});
+    var keyboard = new Keyboard();
+    var vga = new VGA();
+    var gui = new EmulatorGUI();
+    gui.connect(keyboard);
+    gui.connect(vga);
+    gui.show();
+    return new Bus(
+        new Object[] {
+          new Memory(),
+          new RTC(),
+          new SerialPort(),
+          keyboard,
+          vga.getControl(),
+          vga.getFrameBuffer()
+        });
   }
 }

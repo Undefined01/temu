@@ -17,7 +17,8 @@ rv64ui: repo/patched
 	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- rv64um
 
 clean:
-	$(MAKE) -C $(REPO_PATH) clean
+	$(MAKE) -C repo clean
+	rm repo/isa/rv*-*-*
 
 all: rv64ui
 .DEFAULT_GOAL = all

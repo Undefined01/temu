@@ -10,6 +10,7 @@ plugins {
     application
     id("com.diffplug.spotless") version "7.2.1"
     id("me.champeau.jmh") version "0.7.3"
+    id("org.openjfx.javafxplugin") version "0.0.13"
 }
 
 repositories {
@@ -31,6 +32,14 @@ dependencies {
     annotationProcessor(libs.truffle.dsl.processor)
 
     testAnnotationProcessor(libs.truffle.dsl.processor)
+
+    implementation("org.openjfx:javafx-controls:21")
+    implementation("org.openjfx:javafx-graphics:21")
+}
+
+javafx {
+    version = "21"
+    modules = listOf("javafx.controls", "javafx.graphics")
 }
 
 application {
