@@ -16,5 +16,5 @@ public class Opcodes {
   public static final int OP_32 = 0b0111011;
   public static final int OP_IMM_32 = 0b0011011;
 
-  public static final int EBREAK = 0b1110011;
+  public static final int SYSTEM = 0b1110011;
 }

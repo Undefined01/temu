@@ -17,7 +17,7 @@ temu/build/install/temu/bin/temu --engine.CompileImmediately --engine.Background
 
 # Tests
 
-There are some tests for each components. To build and run them, you need to have `riscv64-linux-gnu-gcc` and `make` installed on your system.
+There are some tests for each components. To build and run them, you need to have `riscv64-linux-gnu-gcc`, `riscv64-linux-gnu-g++`, and `make` installed on your system.
 
 ## Instruction-level Tests
 
@@ -68,5 +68,12 @@ temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/fceux/
 
 ## OS-level Tests
 
-These tests are located in the `temu/src/test/nanos` directory and run a simple operating system on the emulator, which provides basic system calls and a shell interface.
+These tests are located in the `temu/src/test/rt-thread` directory and run a simple operating system on the emulator, which provides basic system calls and a shell interface.
+
+To build rt-thread, you need to have `scons` installed on your system.
+
+```
+make -C temu/src/test/rt-thread
+temu/build/install/temu/bin/temu temu/src/test/rt-thread/build/rtthread-riscv64-nemu.bin
+```
 

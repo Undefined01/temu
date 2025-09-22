@@ -4,17 +4,17 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.nodes.ControlFlowException;
 
 public class HaltException extends ControlFlowException {
-  private long pc = 0;
-  private long exitCode = 0;
+  private final long pc;
+  private final long exitCode;
 
-  private HaltException() {}
+  private HaltException(long pc, long exitCode) {
+    this.pc = pc;
+    this.exitCode = exitCode;
+  }
 
   @TruffleBoundary
   public static HaltException create(long pc, long exitCode) {
-    var exception = new HaltException();
-    exception.pc = pc;
-    exception.exitCode = exitCode;
-    return exception;
+    return new HaltException(pc, exitCode);
   }
 
   @Override

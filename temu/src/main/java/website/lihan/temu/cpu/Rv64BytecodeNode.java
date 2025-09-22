@@ -15,7 +15,6 @@ import website.lihan.temu.device.Bus;
 public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   @CompilationFinal long baseAddr;
   @CompilationFinal int entryBci;
-  @CompilationFinal Rv64State cpu;
   @Child Bus bus;
 
   @CompilationFinal(dimensions = 1)
@@ -31,17 +30,16 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     this.entryBci = entryBci;
 
     var context = Rv64Context.get(this);
-    this.cpu = context.getState();
     this.bus = context.getBus();
   }
 
-  public Object execute(VirtualFrame frame) {
-    return executeFromBci(frame, this.entryBci);
+  public Object execute(VirtualFrame frame, Rv64State cpu) {
+    return executeFromBci(frame, cpu, this.entryBci);
   }
 
   @Override
   public Object executeOSR(VirtualFrame osrFrame, int target, Object interpreterState) {
-    return executeFromBci(osrFrame, target);
+    return executeFromBci(osrFrame, (Rv64State) interpreterState, target);
   }
 
   @Override
@@ -56,13 +54,15 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
 
   @BytecodeInterpreterSwitch
   @ExplodeLoop(kind = ExplodeLoop.LoopExplosionKind.MERGE_EXPLODE)
-  public Object executeFromBci(VirtualFrame frame, int bci_) {
-    int bci = bci_;
+  public Object executeFromBci(VirtualFrame frame, Rv64State cpu, int startBci) {
+    int bci = startBci;
     while (true) {
       CompilerAsserts.partialEvaluationConstant(bci);
       int instr = BYTES.getInt(bc, bci);
-      // CompilerAsserts.partialEvaluationConstant(instr);
+      CompilerAsserts.partialEvaluationConstant(instr);
 
+      cpu.pc = getPc(bci);
+      // Utils.printf("pc=%08x: %08x, sp=%08x\n", cpu.pc, instr, cpu.getReg(2));
       int nextBci = bci + 4;
 
       int opcode = instr & 0x7f;
@@ -129,10 +129,80 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
             nextBci = bci + imm;
           }
         }
-        case Opcodes.LOAD -> doLoad(bci, instr);
-        case Opcodes.STORE -> doStore(instr);
-        case Opcodes.EBREAK -> {
-          throw HaltException.create(getPc(bci), cpu.getReg(10));
+        case Opcodes.LOAD -> doLoad(cpu, bci, instr);
+        case Opcodes.STORE -> doStore(cpu, bci, instr);
+        case Opcodes.SYSTEM -> {
+          final var i = IInstruct.decode(instr);
+          switch (i.funct3) {
+            case 0b000 -> {
+              switch (i.imm) {
+                case 0b000000000000 -> {
+                  // ECALL
+                  throw InterruptException.create(getPc(bci), 9);
+                }
+                case 0b000000000001 -> {
+                  // EBREAK
+                  throw HaltException.create(getPc(bci), cpu.getReg(10));
+                }
+                case 0b000100000010 -> {
+                  // SRET
+                  var sstatus = cpu.readCSR(Rv64State.CSR.SSTATUS);
+                  var sepc = cpu.readCSR(Rv64State.CSR.SEPC);
+                  var s = (sstatus >> 8) & 1; // SPP
+                  sstatus = (sstatus & ~(1 << 1)) | ((sstatus & (1 << 5)) >> 4); // SPIE -> SIE
+                  sstatus &= ~(1 << 5); // SPIE = 0
+                  if (s == 1) {
+                    sstatus |= 1 << 3; // SIE = 1
+                  } else {
+                    sstatus &= ~(1 << 3); // SIE = 0
+                  }
+                  cpu.writeCSR(Rv64State.CSR.SSTATUS, sstatus);
+                  throw JumpException.create(sepc);
+                }
+                default -> throw IllegalInstructionException.create(getPc(bci), instr);
+              }
+            }
+            case 0b001 -> {
+              // CSRRW
+              var oldRegValue = cpu.getReg(i.rs1);
+              var oldCSRValue = cpu.readCSR(i.imm);
+              cpu.setReg(i.rd, oldCSRValue);
+              cpu.writeCSR(i.imm, oldRegValue);
+            }
+            case 0b010 -> {
+              // CSRRS
+              var oldRegValue = cpu.getReg(i.rs1);
+              var oldCSRValue = cpu.readCSR(i.imm);
+              cpu.setReg(i.rd, oldCSRValue);
+              cpu.writeCSR(i.imm, oldCSRValue | oldRegValue);
+            }
+            case 0b011 -> {
+              // CSRRC
+              var oldRegValue = cpu.getReg(i.rs1);
+              var oldCSRValue = cpu.readCSR(i.imm);
+              cpu.setReg(i.rd, oldCSRValue);
+              cpu.writeCSR(i.imm, oldCSRValue & ~oldRegValue);
+            }
+            case 0b101 -> {
+              // CSRRWI
+              var oldCSRValue = cpu.readCSR(i.imm);
+              cpu.setReg(i.rd, oldCSRValue);
+              cpu.writeCSR(i.imm, i.rs1);
+            }
+            case 0b110 -> {
+              // CSRRSI
+              var oldCSRValue = cpu.readCSR(i.imm);
+              cpu.setReg(i.rd, oldCSRValue);
+              cpu.writeCSR(i.imm, oldCSRValue | i.rs1);
+            }
+            case 0b111 -> {
+              // CSRRCI
+              var oldCSRValue = cpu.readCSR(i.imm);
+              cpu.setReg(i.rd, oldCSRValue);
+              cpu.writeCSR(i.imm, oldCSRValue & ~i.rs1);
+            }
+            default -> throw IllegalInstructionException.create(getPc(bci), instr);
+          }
         }
         default -> throw IllegalInstructionException.create(bci, instr);
       }
@@ -147,10 +217,6 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       // }
       bci = nextBci;
     }
-  }
-
-  private int executeOneInstr(VirtualFrame frame, int bci, int instr) {
-    return bci + 4;
   }
 
   private long getPc(int bci) {
@@ -344,7 +410,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     };
   }
 
-  private void doLoad(long pc, int instr) {
+  private void doLoad(Rv64State cpu, int bci, int instr) {
     var i = IInstruct.decode(instr);
     byte[] data = new byte[8];
     int length =
@@ -353,7 +419,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           case 0b01 -> 2;
           case 0b10 -> 4;
           case 0b11 -> 8;
-          default -> throw IllegalInstructionException.create(pc, instr);
+          default -> throw IllegalInstructionException.create(getPc(bci), instr);
         };
     bus.executeRead(cpu.getReg(i.rs1) + i.imm, data, length);
     long value = 0;
@@ -366,8 +432,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     cpu.setReg(i.rd, value);
   }
 
-  @ExplodeLoop
-  private void doStore(int instr) {
+  private void doStore(Rv64State cpu, int bci, int instr) {
     var s = SInstruct.decode(instr);
     byte[] data = new byte[8];
     int length =
@@ -376,7 +441,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           case 0b01 -> 2;
           case 0b10 -> 4;
           case 0b11 -> 8;
-          default -> throw IllegalInstructionException.create(entryBci, instr);
+          default -> throw IllegalInstructionException.create(getPc(bci), instr);
         };
     long value = cpu.getReg(s.rs2);
     BYTES.putLong(data, 0, value);

@@ -25,9 +25,9 @@ public class Rv64ExecutionRootNode extends RootNode {
 
   @Override
   public Object execute(VirtualFrame frame) {
-    long pc = 0x80000000L;
+    var cpu = new Rv64State();
     var page = EconomicMap.<Integer, Rv64BytecodeRootNode>create();
-    var pageAddr = pc & PAGE_ADDR_MASK;
+    var pageAddr = cpu.pc & PAGE_ADDR_MASK;
     while (true) {
       try {
         // long pageAddr = pc & PAGE_ADDR_MASK;
@@ -38,7 +38,7 @@ public class Rv64ExecutionRootNode extends RootNode {
         //   entryPoints.put(pageAddr, page);
         // }
         // var subAddr = (int)(pc & ~PAGE_ADDR_MASK);
-        var subAddr = (int) (pc - 0x80000000L);
+        var subAddr = (int) (cpu.pc - 0x80000000L);
         var rootNode = page.get(subAddr);
         if (rootNode == null) {
           CompilerDirectives.transferToInterpreterAndInvalidate();
@@ -46,12 +46,22 @@ public class Rv64ExecutionRootNode extends RootNode {
           rootNode = new Rv64BytecodeRootNode(language, node);
           page.put(subAddr, rootNode);
         }
-        IndirectCallNode.getUncached().call(rootNode.getCallTarget());
+        IndirectCallNode.getUncached().call(rootNode.getCallTarget(), cpu);
       } catch (JumpException e) {
-        pc = e.getTargetPc();
+        cpu.pc = e.getTargetPc();
+      } catch (InterruptException e) {
+        cpu.writeCSR(Rv64State.CSR.SEPC, e.pc);
+        cpu.writeCSR(Rv64State.CSR.SCAUSE, e.cause);
+        var mtvec = cpu.readCSR(Rv64State.CSR.STVEC);
+        // Utils.printf("Interrupt: pc=%08x, cause=%d, jumps to vec=%08x\n", e.pc, e.cause, mtvec);
+        cpu.pc = mtvec;
       } catch (HaltException e) {
         Utils.printf("%s\n", e);
         return 0;
+      } catch (Throwable t) {
+        Utils.printf("Unexpected exception: %s, pc=%08x\n", t, cpu.pc);
+        t.printStackTrace();
+        return -1;
       }
     }
   }
