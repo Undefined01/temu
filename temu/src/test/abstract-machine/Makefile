@@ -6,11 +6,19 @@ repo/README.md:
 
 abstract-machine: repo/README.md
 
-APPS := hello coremark fceux yield-os
+APPS := hello coremark microbench fceux yield-os
 
+ARCH ?= riscv64-nemu
+ITERATIONS ?= 10000
+mainargs ?= mario
+
+coremark_extra_args := ITERATIONS=$(ITERATIONS)
+fceux_extra_args := mainargs=$(mainargs)
 
 $(APPS): abstract-machine
-	AM_HOME=$(shell pwd)/repo $(MAKE) -C repo/apps/$@ ARCH=riscv64-nemu LINUX_GNU_TOOLCHAIN=1 mainargs=$(mainargs)
+	AM_HOME=$(shell pwd)/repo $(MAKE) -C repo/apps/$@ ARCH=$(ARCH) LINUX_GNU_TOOLCHAIN=1 $($@_extra_args)
+	mkdir -p build
+	cp repo/apps/$@/build/$@*.bin build/
 
 clean:
 	find . -name build -exec rm -r {} \;

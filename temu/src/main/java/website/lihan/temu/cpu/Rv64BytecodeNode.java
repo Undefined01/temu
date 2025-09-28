@@ -72,65 +72,6 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           var res = calcArthimeticImm(i.funct3, i.funct7, cpu.getReg(i.rs1), i.imm);
           cpu.setReg(i.rd, res);
         }
-        case Opcodes.OP -> {
-          var r = RInstruct.decode(instr);
-          var res = calcArthimetic(r.funct3, r.funct7, cpu.getReg(r.rs1), cpu.getReg(r.rs2));
-          cpu.setReg(r.rd, res);
-        }
-        case Opcodes.OP_IMM_32 -> {
-          var i = IInstruct.decode(instr);
-          long res = calcArthimeticImm32(i.funct3, i.funct7, (int) cpu.getReg(i.rs1), i.imm);
-          res = signExtend(res, 32);
-          cpu.setReg(i.rd, res);
-        }
-        case Opcodes.OP_32 -> {
-          var r = RInstruct.decode(instr);
-          long res =
-              calcArthimetic32(
-                  r.funct3, r.funct7, (int) cpu.getReg(r.rs1), (int) cpu.getReg(r.rs2));
-          res = signExtend(res, 32);
-          cpu.setReg(r.rd, res);
-        }
-        case Opcodes.LUI -> {
-          final var u = UInstruct.decode(instr);
-          cpu.setReg(u.rd, u.imm);
-        }
-        case Opcodes.AUIPC -> {
-          final var u = UInstruct.decode(instr);
-          cpu.setReg(u.rd, getPc(bci) + u.imm);
-        }
-        case Opcodes.JAL -> {
-          final var j = JInstruct.decode(instr);
-          var imm20 = ((instr >> 31) & 0x1) << 20;
-          var imm10_1 = ((instr >> 21) & 0x3ff) << 1;
-          var imm11 = ((instr >> 20) & 0x1) << 11;
-          var imm19_12 = ((instr >> 12) & 0xff) << 12;
-          var imm = signExtend32(imm20 | imm19_12 | imm11 | imm10_1, 21);
-          nextBci = bci + imm;
-          cpu.setReg(j.rd, getPc(bci + 4));
-        }
-        case Opcodes.JALR -> {
-          final var i = IInstruct.decode(instr);
-          final var imm = (instr >> 20);
-          final var nextPc = cpu.getReg(i.rs1) + (long) imm;
-          cpu.setReg(i.rd, getPc(bci + 4));
-          nextBci = (int) (nextPc - baseAddr);
-          throw JumpException.create(nextBci + baseAddr);
-        }
-        case Opcodes.BRANCH -> {
-          final var b = BInstruct.decode(instr);
-          var cond = calcComparsion(b.funct3, cpu.getReg(b.rs1), cpu.getReg(b.rs2));
-          if (cond) {
-            var imm12 = (instr >> 31) << 12;
-            var imm11 = ((instr >> 7) & 0x1) << 11;
-            var imm10_5 = ((instr >> 25) & 0x3f) << 5;
-            var imm4_1 = ((instr >> 8) & 0xf) << 1;
-            var imm = signExtend32(imm12 | imm11 | imm10_5 | imm4_1, 13);
-            nextBci = bci + imm;
-          }
-        }
-        case Opcodes.LOAD -> doLoad(cpu, bci, instr);
-        case Opcodes.STORE -> doStore(cpu, bci, instr);
         case Opcodes.SYSTEM -> {
           final var i = IInstruct.decode(instr);
           switch (i.funct3) {
@@ -144,67 +85,13 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
                   // EBREAK
                   throw HaltException.create(getPc(bci), cpu.getReg(10));
                 }
-                case 0b000100000010 -> {
-                  // SRET
-                  var sstatus = cpu.readCSR(Rv64State.CSR.SSTATUS);
-                  var sepc = cpu.readCSR(Rv64State.CSR.SEPC);
-                  var s = (sstatus >> 8) & 1; // SPP
-                  sstatus = (sstatus & ~(1 << 1)) | ((sstatus & (1 << 5)) >> 4); // SPIE -> SIE
-                  sstatus &= ~(1 << 5); // SPIE = 0
-                  if (s == 1) {
-                    sstatus |= 1 << 3; // SIE = 1
-                  } else {
-                    sstatus &= ~(1 << 3); // SIE = 0
-                  }
-                  cpu.writeCSR(Rv64State.CSR.SSTATUS, sstatus);
-                  throw JumpException.create(sepc);
-                }
                 default -> throw IllegalInstructionException.create(getPc(bci), instr);
               }
-            }
-            case 0b001 -> {
-              // CSRRW
-              var oldRegValue = cpu.getReg(i.rs1);
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldRegValue);
-            }
-            case 0b010 -> {
-              // CSRRS
-              var oldRegValue = cpu.getReg(i.rs1);
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldCSRValue | oldRegValue);
-            }
-            case 0b011 -> {
-              // CSRRC
-              var oldRegValue = cpu.getReg(i.rs1);
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldCSRValue & ~oldRegValue);
-            }
-            case 0b101 -> {
-              // CSRRWI
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, i.rs1);
-            }
-            case 0b110 -> {
-              // CSRRSI
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldCSRValue | i.rs1);
-            }
-            case 0b111 -> {
-              // CSRRCI
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldCSRValue & ~i.rs1);
             }
             default -> throw IllegalInstructionException.create(getPc(bci), instr);
           }
         }
-        default -> throw IllegalInstructionException.create(bci, instr);
+        default -> throw IllegalInstructionException.create(getPc(bci), instr);
       }
 
       // if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
@@ -304,18 +191,6 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     var shamt = op2 & 0x3f;
     return switch (funct3) {
       case 0b000 -> op1 + op2;
-      case 0b001 -> op1 << shamt;
-      case 0b010 -> op1 < op2 ? 1 : 0;
-      case 0b011 -> Long.compareUnsigned(op1, op2) < 0 ? 1 : 0;
-      case 0b100 -> op1 ^ op2;
-      case 0b101 ->
-          switch (funct7 >> 1) {
-            case 0b000000 -> op1 >>> shamt;
-            case 0b010000 -> op1 >> shamt;
-            default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
-          };
-      case 0b110 -> op1 | op2;
-      case 0b111 -> op1 & op2;
       default -> throw IllegalInstructionException.create("Invalid funct3 %d", funct3);
     };
   }

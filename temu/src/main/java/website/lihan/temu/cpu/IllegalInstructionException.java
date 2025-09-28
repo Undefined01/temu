@@ -24,6 +24,6 @@ public class IllegalInstructionException extends RuntimeException {
   @TruffleBoundary
   public static IllegalInstructionException create(long pc, int instr) {
     return new IllegalInstructionException(
-        String.format("Illegal instruction 0x%08x at pc=0x%016x", instr, pc));
+        String.format("Illegal instruction 0x%08x at pc=0x%08x", instr, pc));
   }
 }

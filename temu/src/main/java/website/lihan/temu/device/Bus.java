@@ -65,20 +65,20 @@ public final class Bus extends Node {
 
   @TruffleBoundary
   public static Bus withDefault() {
-    var keyboard = new Keyboard();
-    var vga = new VGA();
-    var gui = new EmulatorGUI();
-    gui.connect(keyboard);
-    gui.connect(vga);
-    gui.show();
+    // var gui = new EmulatorGUI();
+    // var keyboard = new Keyboard();
+    // var vga = new VGA();
+    // gui.connect(keyboard);
+    // gui.connect(vga);
+    // gui.show();
     return new Bus(
         new Object[] {
           new Memory(),
           new RTC(),
           new SerialPort(),
-          keyboard,
-          vga.getControl(),
-          vga.getFrameBuffer()
+          // keyboard,
+          // vga.getControl(),
+          // vga.getFrameBuffer(),
         });
   }
 }

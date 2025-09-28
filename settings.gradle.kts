@@ -12,3 +12,4 @@ plugins {
 
 rootProject.name = "temu"
 include("temu")
+include("getstart")

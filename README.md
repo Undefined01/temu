@@ -13,6 +13,8 @@ You can find the executable `temu/build/install/temu` directory after building t
 ```
 export JAVA_OPTS="-Djdk.graal.Dump=Truffle:5 -Djdk.graal.PrintGraph=Network -XX:StartFlightRecording=filename=test.jfr -Xss128M"
 temu/build/install/temu/bin/temu --engine.CompileImmediately --engine.BackgroundCompilation=false --engine.TraceCompilation temu/src/test/asm/instr-test/build/addi.bin
+
+temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/coremark/build/coremark-10000-iteration-riscv64-nemu.bin --compiler.TraceCompilationDetails --compiler.CompilationStatistics --compiler.TraceInlining --compiler.TraceCompilationAST --compiler.TracePerformanceWarnings=all --compiler.InstrumentBoundaries --compiler.InstrumentBranches --compiler.SpecializationStatistics --log.file=a.txt
 ```
 
 # Tests
@@ -48,6 +50,48 @@ They require a more complete environment and will interact with the devices like
 ```
 make -C temu/src/test/abstract-machine coremark
 temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/coremark/build/coremark-riscv64-nemu.bin
+```
+
+You can specify the number of iterations by setting the `ITERATIONS` variable:
+
+```
+make -C temu/src/test/abstract-machine coremark ITERATIONS=10000
+temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/coremark/build/coremark-10000-iteration-riscv64-nemu.bin
+```
+
+Result:
+```
+Running CoreMark for 10000 iterations
+2K performance run parameters for coremark.
+CoreMark Size    : 666
+Total time (ms)  : 16485000
+Iterations       : 10000
+Compiler version : GCC10.2.1 20210110
+seedcrc          : 0xe9f5
+[0]crclist       : 0xe714
+[0]crcmatrix     : 0x1fd7
+[0]crcstate      : 0x8e3a
+[0]crcfinal      : 0x988c
+Finished in 16485000 ms.
+==================================================
+CoreMark Iterations/Sec 606.61
+website.lihan.temu.cpu.HaltException: Halt at 80002784 with code 0
+```
+
+Compared to NEMU:
+```
+
+```
+
+**microbench**
+
+```
+make -C temu/src/test/abstract-machine microbench
+temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/microbench/build/microbench-riscv64-nemu.bin
+```
+
+Result:
+```
 ```
 
 **fceux**

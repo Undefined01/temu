@@ -15,7 +15,12 @@ public class Rv64BytecodeRootNode extends RootNode {
 
   @Override
   public Object execute(VirtualFrame frame) {
-    var cpu = (Rv64State)frame.getArguments()[0];
+    Rv64State cpu;
+    if (frame.getArguments().length > 0) {
+      cpu = (Rv64State)frame.getArguments()[0];
+    } else {
+      cpu = new Rv64State();
+    }
     return bytecodeNode.execute(frame, cpu);
   }
 }

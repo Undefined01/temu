@@ -7,6 +7,8 @@ import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.object.Shape;
 import com.oracle.truffle.api.strings.TruffleString;
 import website.lihan.temu.cpu.Rv64ExecutionRootNode;
+import website.lihan.temu.cpu.Rv64BytecodeNode;
+import website.lihan.temu.cpu.Rv64BytecodeRootNode;
 import website.lihan.temu.device.Bus;
 
 @TruffleLanguage.Registration(
@@ -33,7 +35,9 @@ public final class Rv64BytecodeLanguage extends TruffleLanguage<Rv64Context> {
     var source = request.getSource();
 
     var bytecode = source.getBytes().toByteArray();
-    var evalRootNode = new Rv64ExecutionRootNode(this, bytecode);
+          var node = new Rv64BytecodeNode(0x80000000L, bytecode, 0);
+          var evalRootNode = new Rv64BytecodeRootNode(this, node);
+    // var evalRootNode = new Rv64ExecutionRootNode(this, bytecode);
     var context = Rv64Context.get(evalRootNode);
     context.getBus().executeWrite(0x80000000L, bytecode, bytecode.length);
 
