@@ -35,12 +35,9 @@ public class App {
     }
 
     if (file == null) {
-      // @formatter:off
-      source =
-          Source.newBuilder(LANG, new InputStreamReader(System.in), "<stdin>")
-              .interactive(INTERACTIVE)
-              .build();
-      // @formatter:on
+      System.err.println("Usage: temu <file>");
+      System.exit(1);
+      return;
     } else {
       var bytes = Files.readAllBytes(Path.of(file));
       source =

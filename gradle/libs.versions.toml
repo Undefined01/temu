@@ -5,7 +5,6 @@
 guava = "33.2.1-jre"
 junit-jupiter = "5.10.3"
 graalvm = "25.0.0"
-# graalvm = "24.2.0-SNAPSHOT"
 
 [libraries]
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
@@ -14,3 +13,5 @@ truffle-api = { module = "org.graalvm.truffle:truffle-api", version.ref = "graal
 truffle-runtime = { module = "org.graalvm.truffle:truffle-runtime", version.ref = "graalvm" }
 truffle-api-bytecode = { module = "org.graalvm.truffle:truffle-dsls", version.ref = "graalvm" }
 truffle-dsl-processor = { module = "org.graalvm.truffle:truffle-dsl-processor", version.ref = "graalvm" }
+graalvm-polyglot = { module = "org.graalvm.polyglot:polyglot", version.ref = "graalvm" }
+graalvm-profiler = { module = "org.graalvm.polyglot:profiler", version.ref = "graalvm" }

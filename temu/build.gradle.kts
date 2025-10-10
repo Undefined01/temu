@@ -10,7 +10,7 @@ plugins {
     application
     id("com.diffplug.spotless") version "7.2.1"
     id("me.champeau.jmh") version "0.7.3"
-    id("org.openjfx.javafxplugin") version "0.0.13"
+    id("org.openjfx.javafxplugin") version "0.1.0"
 }
 
 repositories {
@@ -29,6 +29,8 @@ dependencies {
 
     implementation(libs.truffle.api)
     implementation(libs.truffle.runtime)
+    // implementation(libs.graalvm.polyglot)
+    // implementation(libs.graalvm.profiler)
     annotationProcessor(libs.truffle.dsl.processor)
 
     testAnnotationProcessor(libs.truffle.dsl.processor)

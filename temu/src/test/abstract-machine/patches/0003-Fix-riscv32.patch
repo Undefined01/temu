@@ -1,0 +1,81 @@
+From 604b4964776c5b760c830832c7e401f6a1fbc03f Mon Sep 17 00:00:00 2001
+From: Undefined01 <amoscr@163.com>
+Date: Fri, 10 Oct 2025 23:48:33 +0800
+Subject: [PATCH 3/3] Fix riscv32
+
+---
+ am/arch/isa/riscv32.mk               | 2 +-
+ am/src/nemu/common/timer.c           | 4 ++--
+ am/src/nemu/isa/riscv/boot/loader.ld | 2 +-
+ am/src/nemu/isa/riscv/vme.c          | 4 ++--
+ 4 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/am/arch/isa/riscv32.mk b/am/arch/isa/riscv32.mk
+index 65caffd0..1a67e992 100644
+--- a/am/arch/isa/riscv32.mk
++++ b/am/arch/isa/riscv32.mk
+@@ -1,5 +1,5 @@
+ CROSS_COMPILE := riscv64-linux-gnu-
+-COMMON_FLAGS  := -fno-pic -march=rv32g -mabi=ilp32
++COMMON_FLAGS  := -fno-pic -march=rv32im -mabi=ilp32
+ CFLAGS        += $(COMMON_FLAGS) -static
+ ASFLAGS       += $(COMMON_FLAGS) -O0
+ LDFLAGS       += -melf32lriscv
+diff --git a/am/src/nemu/common/timer.c b/am/src/nemu/common/timer.c
+index f291bcc9..ef92972d 100644
+--- a/am/src/nemu/common/timer.c
++++ b/am/src/nemu/common/timer.c
+@@ -9,7 +9,7 @@ size_t __am_timer_read(uintptr_t reg, void *buf, size_t size) {
+     case _DEVREG_TIMER_UPTIME: {
+       _DEV_TIMER_UPTIME_t *uptime = (_DEV_TIMER_UPTIME_t *)buf;
+       uptime->hi = 0;
+-      uptime->lo = inl(RTC_ADDR) - boot_time;
++      uptime->lo = inl(RTC_ADDR)/1000 - boot_time;
+       return sizeof(_DEV_TIMER_UPTIME_t);
+     }
+     case _DEVREG_TIMER_DATE: {
+@@ -27,5 +27,5 @@ size_t __am_timer_read(uintptr_t reg, void *buf, size_t size) {
+ }
+ 
+ void __am_timer_init() {
+-  boot_time = inl(RTC_ADDR);
++  boot_time = inl(RTC_ADDR)/1000;
+ }
+diff --git a/am/src/nemu/isa/riscv/boot/loader.ld b/am/src/nemu/isa/riscv/boot/loader.ld
+index 97694184..05cf7af7 100644
+--- a/am/src/nemu/isa/riscv/boot/loader.ld
++++ b/am/src/nemu/isa/riscv/boot/loader.ld
+@@ -1,7 +1,7 @@
+ pmem_base = 0x80000000;
+ 
+ MEMORY {
+-  ram (rwxa) : ORIGIN = 0x80100000, LENGTH = 1024M
++  ram (rwxa) : ORIGIN = 0x80000000, LENGTH = 1024M
+ }
+ 
+ INCLUDE "section.ld"
+diff --git a/am/src/nemu/isa/riscv/vme.c b/am/src/nemu/isa/riscv/vme.c
+index fe51a6ee..5b1dbb00 100644
+--- a/am/src/nemu/isa/riscv/vme.c
++++ b/am/src/nemu/isa/riscv/vme.c
+@@ -186,7 +186,7 @@ void _map_fault(_AddressSpace *as, void *va, void *pa, int prot) {
+   for (int i = 0; i < 20; i++){
+     max *= 2;
+   }
+-  uintptr_t randnum = rand() % (max - 1);
++  // uintptr_t randnum = rand() % (max - 1);
+ 
+   for (level = PTW_CONFIG.ptw_level - 1; ; level --) {
+     pte = &pg_base[VPNi(PTW_CONFIG, (uintptr_t)va, level)];
+@@ -199,7 +199,7 @@ void _map_fault(_AddressSpace *as, void *va, void *pa, int prot) {
+   }
+ 
+   if (!(*pte & PTE_V)) {
+-    *pte = PTE_V | prot | (PN(pa) << 10) | (randnum << 34);
++    // *pte = PTE_V | prot | (PN(pa) << 10) | (randnum << 34);
+   }
+ }
+ 
+-- 
+2.30.2
+

@@ -1,7 +1,7 @@
 From 5fb6898eb099974f2df3bfab9d508f25b8043dc3 Mon Sep 17 00:00:00 2001
 From: Undefined01 <amoscr@163.com>
 Date: Mon, 22 Sep 2025 23:06:01 +0800
-Subject: [PATCH 2/2] Port for rtthread
+Subject: [PATCH 2/3] Port for rtthread
 
 ---
  am/src/nemu/isa/riscv/cte.c   | 13 +++++++++---

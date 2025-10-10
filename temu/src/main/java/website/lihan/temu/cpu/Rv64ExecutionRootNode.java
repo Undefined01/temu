@@ -59,7 +59,7 @@ public class Rv64ExecutionRootNode extends RootNode {
         Utils.printf("%s\n", e);
         return 0;
       } catch (Throwable t) {
-        Utils.printf("Unexpected exception: %s, pc=%08x\n", t, cpu.pc);
+        Utils.printf("Unexpected exception: %s\n", t);
         t.printStackTrace();
         return -1;
       }

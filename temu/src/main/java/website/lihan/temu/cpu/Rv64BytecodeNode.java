@@ -204,7 +204,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
             default -> throw IllegalInstructionException.create(getPc(bci), instr);
           }
         }
-        default -> throw IllegalInstructionException.create(bci, instr);
+        default -> throw IllegalInstructionException.create(getPc(bci), instr);
       }
 
       // if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
