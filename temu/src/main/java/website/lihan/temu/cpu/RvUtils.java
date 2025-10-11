@@ -2,7 +2,7 @@ package website.lihan.temu.cpu;
 
 import com.oracle.truffle.api.memory.ByteArraySupport;
 
-public class Utils {
+public class RvUtils {
   public static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
 
   public static long signExtend(long value, int bits) {
@@ -10,7 +10,7 @@ public class Utils {
   }
 
   public static int signExtend32(int value, int bits) {
-    return (value << (64 - bits)) >> (64 - bits);
+    return (value << (32 - bits)) >> (32 - bits);
   }
 
   public static record IInstruct(int opcode, int rd, int rs1, int funct3, int funct7, int imm) {

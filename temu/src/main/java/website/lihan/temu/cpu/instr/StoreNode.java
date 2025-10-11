@@ -1,6 +1,6 @@
-package website.lihan.temu.cpu;
+package website.lihan.temu.cpu.instr;
 
-import static website.lihan.temu.cpu.Utils.BYTES;
+import static website.lihan.temu.cpu.RvUtils.BYTES;
 
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Specialization;

@@ -1,4 +1,4 @@
-package website.lihan.temu.cpu;
+package website.lihan.temu.cpu.instr;
 
 import com.oracle.truffle.api.nodes.Node;
 

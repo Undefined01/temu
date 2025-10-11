@@ -65,7 +65,7 @@ Result:
 Running CoreMark for 10000 iterations
 2K performance run parameters for coremark.
 CoreMark Size    : 666
-Total time (ms)  : 9145
+Total time (ms)  : 6258
 Iterations       : 10000
 Compiler version : GCC10.2.1 20210110
 seedcrc          : 0xe9f5
@@ -73,9 +73,9 @@ seedcrc          : 0xe9f5
 [0]crcmatrix     : 0x1fd7
 [0]crcstate      : 0x8e3a
 [0]crcfinal      : 0x988c
-Finished in 9145 ms.
+Finished in 6258 ms.
 ==================================================
-CoreMark Iterations/Sec 1093493.71
+CoreMark Iterations/Sec 1597954.62
 website.lihan.temu.cpu.HaltException: Halt at 80002794 with code 0
 ```
 
@@ -116,29 +116,29 @@ Result:
 Empty mainargs. Use "ref" by default
 ======= Running MicroBench [input *ref*] =======
 [qsort] Quick sort: * Passed.
-  min time: 315 ms [1623]
+  min time: 166 ms [3080]
 [queen] Queen placement: * Passed.
-  min time: 610 ms [771]
+  min time: 350 ms [1344]
 [bf] Brainf**k interpreter: * Passed.
-  min time: 3988 ms [593]
+  min time: 2112 ms [1120]
 [fib] Fibonacci number: * Passed.
-  min time: 863 ms [3281]
+  min time: 783 ms [3616]
 [sieve] Eratosthenes sieve: * Passed.
-  min time: 343 ms [11475]
+  min time: 421 ms [9349]
 [15pz] A* 15-puzzle search: * Passed.
-  min time: 462 ms [970]
+  min time: 491 ms [913]
 [dinic] Dinic's maxflow algorithm: * Passed.
-  min time: 980 ms [1110]
+  min time: 861 ms [1263]
 [lzip] Lzip compression: * Passed.
-  min time: 486 ms [1562]
+  min time: 477 ms [1591]
 [ssort] Suffix sort: * Passed.
-  min time: 313 ms [1438]
+  min time: 269 ms [1674]
 [md5] MD5 digest: * Passed.
-  min time: 697 ms [2473]
+  min time: 565 ms [3051]
 ==================================================
-MicroBench PASS        2529 Marks
+MicroBench PASS        2700 Marks
                    vs. 100000 Marks (i7-7700K @ 4.20GHz)
-Total time: 13813 ms
+Total time: 9563 ms
 website.lihan.temu.cpu.HaltException: Halt at 80005460 with code 0
 ```
 

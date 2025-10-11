@@ -1,6 +1,6 @@
 package website.lihan.temu.device;
 
-import static website.lihan.temu.cpu.Utils.BYTES;
+import static website.lihan.temu.cpu.RvUtils.BYTES;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.library.ExportLibrary;

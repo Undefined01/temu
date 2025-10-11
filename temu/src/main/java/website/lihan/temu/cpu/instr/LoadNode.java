@@ -1,4 +1,6 @@
-package website.lihan.temu.cpu;
+package website.lihan.temu.cpu.instr;
+
+import static website.lihan.temu.cpu.RvUtils.BYTES;
 
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Specialization;
@@ -64,18 +66,18 @@ public abstract class LoadNode extends Node {
     bus.executeRead(addr, data, length);
     if (signedExtend) {
       return switch (length) {
-        case 1 -> Utils.BYTES.getByte(data, 0);
-        case 2 -> Utils.BYTES.getShort(data, 0);
-        case 4 -> Utils.BYTES.getInt(data, 0);
-        case 8 -> Utils.BYTES.getLong(data, 0);
+        case 1 -> BYTES.getByte(data, 0);
+        case 2 -> BYTES.getShort(data, 0);
+        case 4 -> BYTES.getInt(data, 0);
+        case 8 -> BYTES.getLong(data, 0);
         default -> 0;
       };
     } else {
       return switch (length) {
-        case 1 -> (long) Utils.BYTES.getByte(data, 0) & 0xFFL;
-        case 2 -> (long) Utils.BYTES.getShort(data, 0) & 0xFFFFL;
-        case 4 -> (long) Utils.BYTES.getInt(data, 0) & 0xFFFFFFFFL;
-        case 8 -> Utils.BYTES.getLong(data, 0);
+        case 1 -> (long) BYTES.getByte(data, 0) & 0xFFL;
+        case 2 -> (long) BYTES.getShort(data, 0) & 0xFFFFL;
+        case 4 -> (long) BYTES.getInt(data, 0) & 0xFFFFFFFFL;
+        case 8 -> BYTES.getLong(data, 0);
         default -> 0;
       };
     }

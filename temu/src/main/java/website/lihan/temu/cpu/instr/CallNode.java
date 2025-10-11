@@ -1,11 +1,13 @@
-package website.lihan.temu.cpu;
+package website.lihan.temu.cpu.instr;
 
 import com.oracle.truffle.api.CallTarget;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
+import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.DirectCallNode;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.cpu.Rv64State;
 
 public class CallNode extends Node {
   public final long targetPc;
@@ -31,5 +33,9 @@ public class CallNode extends Node {
     }
     cpu.setReg(1, returnPc); // ra
     directCallNode.call(cpu, returnPc);
+  }
+
+  public static boolean jalrIsReturn(VirtualFrame frame, long nextPc) {
+    return frame.getArguments().length > 2 && (long) frame.getArguments()[1] == nextPc;
   }
 }

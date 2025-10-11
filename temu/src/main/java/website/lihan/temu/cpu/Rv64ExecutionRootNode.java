@@ -23,6 +23,7 @@ public class Rv64ExecutionRootNode extends RootNode {
   @Override
   public Object execute(VirtualFrame frame) {
     var cpu = this.context.getState();
+    var callNode = IndirectCallNode.create();
     while (true) {
       try {
         // long pageAddr = pc & PAGE_ADDR_MASK;
@@ -34,7 +35,7 @@ public class Rv64ExecutionRootNode extends RootNode {
         // }
         // var subAddr = (int)(pc & ~PAGE_ADDR_MASK);
         var rootNode = context.getExecPageCache().getByEntryPoint(cpu.pc);
-        IndirectCallNode.getUncached().call(rootNode.getCallTarget(), cpu);
+        callNode.call(rootNode.getCallTarget(), cpu);
       } catch (JumpException e) {
         cpu.pc = e.getTargetPc();
       } catch (InterruptException e) {
