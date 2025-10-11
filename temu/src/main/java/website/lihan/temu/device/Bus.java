@@ -31,7 +31,6 @@ public final class Bus extends Node {
     }
   }
 
-  @TruffleBoundary
   public int executeRead(long address, byte[] data, int length) {
     var device = findDevice(address);
     if (device != null) {
@@ -42,7 +41,6 @@ public final class Bus extends Node {
     return -1;
   }
 
-  @TruffleBoundary
   public int executeWrite(long address, byte[] data, int length) {
     var device = findDevice(address);
     if (device != null) {

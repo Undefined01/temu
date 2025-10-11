@@ -36,8 +36,8 @@ make -C temu/src/test/asm/instr-test
 **Riscv Tests**
 
 ```
-make -C temu/src/test/asm/riscv-tests
-find temu/src/test/asm/riscv-test/repo/isa/ -name '*-p-*.bin' -exec bash -c "echo {}; (temu/build/install/temu/bin/temu '{}' | grep 'with code 0' >/dev/null) || echo 'ERROR: Test failed {}'" \;
+make -C temu/src/test/asm/riscv-test
+find temu/src/test/asm/riscv-test/repo/isa/ -name '*-p-*.bin' -exec bash -c "echo {}; (temu/build/install/temu/bin/temu '{}' 2>&1 | grep 'with code 0' >/dev/null) || echo 'ERROR: Test failed {}'" \;
 ```
 
 ## Board-level Tests

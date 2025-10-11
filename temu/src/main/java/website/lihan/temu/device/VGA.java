@@ -126,8 +126,22 @@ public final class VGA {
     @ExportMessage
     public int write(long address, byte[] data, int length) {
       System.arraycopy(data, 0, vmem, (int) address, length);
-      vmem[(int) address + 3] = (byte) 0xff;
+      for (int i = 3; i < length; i+=4) {
+        vmem[(int) address + i] |= 0xFF;
+      }
       return length;
+    }
+
+    @ExportMessage
+    public void write4(long address, int value) {
+      value |= 0xFF000000;
+      BYTES.putInt(vmem, (int) address, value);
+    }
+
+    @ExportMessage
+    public void write8(long address, long value) {
+      value |= 0xFF000000FF000000L;
+      BYTES.putLong(vmem, (int) address, value);
     }
   }
 }

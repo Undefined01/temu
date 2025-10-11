@@ -1,9 +1,5 @@
 package website.lihan.temu.cpu;
 
-import static website.lihan.temu.cpu.RvUtils.BInstruct;
-import static website.lihan.temu.cpu.RvUtils.IInstruct;
-import static website.lihan.temu.cpu.RvUtils.UInstruct;
-
 import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;

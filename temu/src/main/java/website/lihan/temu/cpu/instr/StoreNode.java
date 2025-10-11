@@ -33,7 +33,7 @@ public abstract class StoreNode extends Node {
 
   @Specialization(
       guards = {"startAddress <= addr", "addr < endAddress"},
-      limit = "1")
+      limit = "2")
   void doStore(
       long addr,
       long value,
