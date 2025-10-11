@@ -1,15 +1,15 @@
 package website.lihan.temu.device;
 
+import static website.lihan.temu.cpu.Utils.BYTES;
+
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
-import com.oracle.truffle.api.memory.ByteArraySupport;
 import javafx.scene.image.Image;
 import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
 
 public final class VGA {
-  private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
   private final int screenWidth = 400;
   private final int screenHeight = 300;
 

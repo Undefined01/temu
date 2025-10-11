@@ -1,19 +1,20 @@
 package website.lihan.temu.device;
 
+import static website.lihan.temu.cpu.Utils.BYTES;
+
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
-import com.oracle.truffle.api.memory.ByteArraySupport;
 import java.util.LinkedList;
 import java.util.Queue;
 import javafx.scene.input.KeyCode;
 
 @ExportLibrary(DeviceLibrary.class)
 public final class Keyboard {
-  public final long baseAddress;
+  private final long baseAddress;
 
-  private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
   private static final int KEYDOWN_MASK = 0x8000;
   private static final int KEY_QUEUE_LEN = 1024;
+
   private final Queue<Integer> keyQueue = new LinkedList<>();
 
   public Keyboard() {

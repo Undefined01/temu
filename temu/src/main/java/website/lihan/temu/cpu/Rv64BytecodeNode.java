@@ -1,6 +1,14 @@
 package website.lihan.temu.cpu;
 
+import static website.lihan.temu.cpu.Utils.BInstruct;
+import static website.lihan.temu.cpu.Utils.IInstruct;
+import static website.lihan.temu.cpu.Utils.RInstruct;
+import static website.lihan.temu.cpu.Utils.UInstruct;
+import static website.lihan.temu.cpu.Utils.signExtend;
+import static website.lihan.temu.cpu.Utils.signExtend32;
+
 import com.oracle.truffle.api.CompilerAsserts;
+import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.HostCompilerDirectives.BytecodeInterpreterSwitch;
 import com.oracle.truffle.api.frame.VirtualFrame;
@@ -10,6 +18,10 @@ import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.Utils;
+import website.lihan.temu.cpu.Utils.BInstruct;
+import website.lihan.temu.cpu.Utils.IInstruct;
+import website.lihan.temu.cpu.Utils.RInstruct;
+import website.lihan.temu.cpu.Utils.UInstruct;
 import website.lihan.temu.device.Bus;
 
 public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
@@ -19,6 +31,9 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
 
   @CompilationFinal(dimensions = 1)
   private byte[] bc;
+
+  @CompilationFinal(dimensions = 1)
+  private Node[] nodes;
 
   @CompilationFinal private Object osrMetadata;
 
@@ -31,9 +46,15 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
 
     var context = Rv64Context.get(this);
     this.bus = context.getBus();
+    this.nodes = null;
   }
 
   public Object execute(VirtualFrame frame, Rv64State cpu) {
+    if (nodes == null) {
+      CompilerDirectives.transferToInterpreterAndInvalidate();
+      var context = Rv64Context.get(this);
+      this.nodes = context.getExecPageCache().getCachedNodes(baseAddr, bc);
+    }
     return executeFromBci(frame, cpu, this.entryBci);
   }
 
@@ -69,57 +90,63 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       switch (opcode) {
         case Opcodes.OP_IMM -> {
           var i = IInstruct.decode(instr);
-          var res = calcArthimeticImm(i.funct3, i.funct7, cpu.getReg(i.rs1), i.imm);
-          cpu.setReg(i.rd, res);
+          var res = calcArthimeticImm(i.funct3(), i.funct7(), cpu.getReg(i.rs1()), i.imm());
+          cpu.setReg(i.rd(), res);
         }
         case Opcodes.OP -> {
           var r = RInstruct.decode(instr);
-          var res = calcArthimetic(r.funct3, r.funct7, cpu.getReg(r.rs1), cpu.getReg(r.rs2));
-          cpu.setReg(r.rd, res);
+          var res =
+              calcArthimetic(r.funct3(), r.funct7(), cpu.getReg(r.rs1()), cpu.getReg(r.rs2()));
+          cpu.setReg(r.rd(), res);
         }
         case Opcodes.OP_IMM_32 -> {
           var i = IInstruct.decode(instr);
-          long res = calcArthimeticImm32(i.funct3, i.funct7, (int) cpu.getReg(i.rs1), i.imm);
+          long res =
+              calcArthimeticImm32(i.funct3(), i.funct7(), (int) cpu.getReg(i.rs1()), i.imm());
           res = signExtend(res, 32);
-          cpu.setReg(i.rd, res);
+          cpu.setReg(i.rd(), res);
         }
         case Opcodes.OP_32 -> {
           var r = RInstruct.decode(instr);
           long res =
               calcArthimetic32(
-                  r.funct3, r.funct7, (int) cpu.getReg(r.rs1), (int) cpu.getReg(r.rs2));
+                  r.funct3(), r.funct7(), (int) cpu.getReg(r.rs1()), (int) cpu.getReg(r.rs2()));
           res = signExtend(res, 32);
-          cpu.setReg(r.rd, res);
+          cpu.setReg(r.rd(), res);
         }
         case Opcodes.LUI -> {
           final var u = UInstruct.decode(instr);
-          cpu.setReg(u.rd, u.imm);
+          cpu.setReg(u.rd(), u.imm());
         }
         case Opcodes.AUIPC -> {
           final var u = UInstruct.decode(instr);
-          cpu.setReg(u.rd, getPc(bci) + u.imm);
+          cpu.setReg(u.rd(), getPc(bci) + u.imm());
         }
         case Opcodes.JAL -> {
-          final var j = JInstruct.decode(instr);
-          var imm20 = ((instr >> 31) & 0x1) << 20;
-          var imm10_1 = ((instr >> 21) & 0x3ff) << 1;
-          var imm11 = ((instr >> 20) & 0x1) << 11;
-          var imm19_12 = ((instr >> 12) & 0xff) << 12;
-          var imm = signExtend32(imm20 | imm19_12 | imm11 | imm10_1, 21);
-          nextBci = bci + imm;
-          cpu.setReg(j.rd, getPc(bci + 4));
+          var isCall = (instr & 0x80) != 0;
+          var nodeIdx = (instr >> 8);
+          if (isCall) {
+            CallNode.class.cast(nodes[nodeIdx]).call(cpu);
+          } else {
+            var jalNode = JalNode.class.cast(nodes[nodeIdx]);
+            nextBci = (int) (jalNode.targetPc - baseAddr);
+            cpu.setReg(jalNode.rd, jalNode.returnPc);
+          }
         }
         case Opcodes.JALR -> {
           final var i = IInstruct.decode(instr);
           final var imm = (instr >> 20);
-          final var nextPc = cpu.getReg(i.rs1) + (long) imm;
-          cpu.setReg(i.rd, getPc(bci + 4));
+          final var nextPc = cpu.getReg(i.rs1()) + (long) imm;
+          if (frame.getArguments().length > 2 && (long) frame.getArguments()[1] == nextPc) {
+            return 0;
+          }
+          cpu.setReg(i.rd(), getPc(bci + 4));
           nextBci = (int) (nextPc - baseAddr);
           throw JumpException.create(nextBci + baseAddr);
         }
         case Opcodes.BRANCH -> {
           final var b = BInstruct.decode(instr);
-          var cond = calcComparsion(b.funct3, cpu.getReg(b.rs1), cpu.getReg(b.rs2));
+          var cond = calcComparsion(b.funct3(), cpu.getReg(b.rs1()), cpu.getReg(b.rs2()));
           if (cond) {
             var imm12 = (instr >> 31) << 12;
             var imm11 = ((instr >> 7) & 0x1) << 11;
@@ -133,9 +160,9 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         case Opcodes.STORE -> doStore(cpu, bci, instr);
         case Opcodes.SYSTEM -> {
           final var i = IInstruct.decode(instr);
-          switch (i.funct3) {
+          switch (i.funct3()) {
             case 0b000 -> {
-              switch (i.imm) {
+              switch (i.imm()) {
                 case 0b000000000000 -> {
                   // ECALL
                   throw InterruptException.create(getPc(bci), 9);
@@ -164,42 +191,42 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
             }
             case 0b001 -> {
               // CSRRW
-              var oldRegValue = cpu.getReg(i.rs1);
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldRegValue);
+              var oldRegValue = cpu.getReg(i.rs1());
+              var oldCSRValue = cpu.readCSR(i.imm());
+              cpu.setReg(i.rd(), oldCSRValue);
+              cpu.writeCSR(i.imm(), oldRegValue);
             }
             case 0b010 -> {
               // CSRRS
-              var oldRegValue = cpu.getReg(i.rs1);
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldCSRValue | oldRegValue);
+              var oldRegValue = cpu.getReg(i.rs1());
+              var oldCSRValue = cpu.readCSR(i.imm());
+              cpu.setReg(i.rd(), oldCSRValue);
+              cpu.writeCSR(i.imm(), oldCSRValue | oldRegValue);
             }
             case 0b011 -> {
               // CSRRC
-              var oldRegValue = cpu.getReg(i.rs1);
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldCSRValue & ~oldRegValue);
+              var oldRegValue = cpu.getReg(i.rs1());
+              var oldCSRValue = cpu.readCSR(i.imm());
+              cpu.setReg(i.rd(), oldCSRValue);
+              cpu.writeCSR(i.imm(), oldCSRValue & ~oldRegValue);
             }
             case 0b101 -> {
               // CSRRWI
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, i.rs1);
+              var oldCSRValue = cpu.readCSR(i.imm());
+              cpu.setReg(i.rd(), oldCSRValue);
+              cpu.writeCSR(i.imm(), i.rs1());
             }
             case 0b110 -> {
               // CSRRSI
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldCSRValue | i.rs1);
+              var oldCSRValue = cpu.readCSR(i.imm());
+              cpu.setReg(i.rd(), oldCSRValue);
+              cpu.writeCSR(i.imm(), oldCSRValue | i.rs1());
             }
             case 0b111 -> {
               // CSRRCI
-              var oldCSRValue = cpu.readCSR(i.imm);
-              cpu.setReg(i.rd, oldCSRValue);
-              cpu.writeCSR(i.imm, oldCSRValue & ~i.rs1);
+              var oldCSRValue = cpu.readCSR(i.imm());
+              cpu.setReg(i.rd(), oldCSRValue);
+              cpu.writeCSR(i.imm(), oldCSRValue & ~i.rs1());
             }
             default -> throw IllegalInstructionException.create(getPc(bci), instr);
           }
@@ -207,14 +234,14 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         default -> throw IllegalInstructionException.create(getPc(bci), instr);
       }
 
-      // if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
-      //   if (BytecodeOSRNode.pollOSRBackEdge(this, 1)) { // OSR can be tried
-      //     Object result = BytecodeOSRNode.tryOSR(this, nextBci, null, null, frame);
-      //     if (result != null) { // OSR was performed
-      //       return result;
-      //     }
-      //   }
-      // }
+      if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
+        if (BytecodeOSRNode.pollOSRBackEdge(this, 1)) { // OSR can be tried
+          Object result = BytecodeOSRNode.tryOSR(this, nextBci, cpu, null, frame);
+          if (result != null) { // OSR was performed
+            return result;
+          }
+        }
+      }
       bci = nextBci;
     }
   }
@@ -411,122 +438,24 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   }
 
   private void doLoad(Rv64State cpu, int bci, int instr) {
-    var i = IInstruct.decode(instr);
-    byte[] data = new byte[8];
-    int length =
-        switch (i.funct3 & 0b11) {
-          case 0b00 -> 1;
-          case 0b01 -> 2;
-          case 0b10 -> 4;
-          case 0b11 -> 8;
-          default -> throw IllegalInstructionException.create(getPc(bci), instr);
-        };
-    bus.executeRead(cpu.getReg(i.rs1) + i.imm, data, length);
-    long value = 0;
-    for (int j = 0; j < length; j++) {
-      value |= (long) (data[j] & 0xff) << (j * 8);
+    var loadNode = LoadNode.class.cast(nodes[(instr >> 8)]);
+    var isValidInstr = (instr & 0x80) != 0;
+    if (!isValidInstr) {
+      throw IllegalInstructionException.create(getPc(bci), instr);
     }
-    if ((i.funct3 & 0b100) == 0) {
-      value = signExtend(value, length * 8);
-    }
-    cpu.setReg(i.rd, value);
+    var addr = cpu.getReg(loadNode.rs1) + loadNode.offset;
+    var value = loadNode.execute(addr);
+
+    cpu.setReg(loadNode.rd, value);
   }
 
   private void doStore(Rv64State cpu, int bci, int instr) {
-    var s = SInstruct.decode(instr);
-    byte[] data = new byte[8];
-    int length =
-        switch (s.funct3 & 0b11) {
-          case 0b00 -> 1;
-          case 0b01 -> 2;
-          case 0b10 -> 4;
-          case 0b11 -> 8;
-          default -> throw IllegalInstructionException.create(getPc(bci), instr);
-        };
-    long value = cpu.getReg(s.rs2);
-    BYTES.putLong(data, 0, value);
-    bus.executeWrite(cpu.getReg(s.rs1) + s.imm, data, length);
-  }
-
-  private static long signExtend(long value, int bits) {
-    return (value << (64 - bits)) >> (64 - bits);
-  }
-
-  private static int signExtend32(int value, int bits) {
-    return (value << (64 - bits)) >> (64 - bits);
-  }
-
-  static record IInstruct(int opcode, int rd, int rs1, int funct3, int funct7, int imm) {
-    public static IInstruct decode(int instr) {
-      var opcode = instr & 0x7f;
-      var rd = (instr >> 7) & 0x1f;
-      var funct3 = (instr >> 12) & 0x7;
-      var funct7 = (instr >> 25) & 0x7f;
-      var rs1 = (instr >> 15) & 0x1f;
-      var imm = signExtend32(instr >> 20, 12);
-      return new IInstruct(opcode, rd, rs1, funct3, funct7, imm);
+    var storeNode = StoreNode.class.cast(nodes[(instr >> 8)]);
+    var isValidInstr = (instr & 0x80) != 0;
+    if (!isValidInstr) {
+      throw IllegalInstructionException.create(getPc(bci), instr);
     }
-  }
-
-  static record RInstruct(int opcode, int rd, int rs1, int rs2, int funct3, int funct7) {
-    public static RInstruct decode(int instr) {
-      var opcode = instr & 0x7f;
-      var rd = (instr >> 7) & 0x1f;
-      var funct3 = (instr >> 12) & 0x7;
-      var rs1 = (instr >> 15) & 0x1f;
-      var rs2 = (instr >> 20) & 0x1f;
-      var funct7 = (instr >> 25);
-      return new RInstruct(opcode, rd, rs1, rs2, funct3, funct7);
-    }
-  }
-
-  static record UInstruct(int opcode, int rd, int imm) {
-    public static UInstruct decode(int instr) {
-      var opcode = instr & 0x7f;
-      var rd = (instr >> 7) & 0x1f;
-      var imm = (instr >> 12) << 12;
-      return new UInstruct(opcode, rd, imm);
-    }
-  }
-
-  static record SInstruct(int opcode, int rs1, int rs2, int funct3, int imm) {
-    public static SInstruct decode(int instr) {
-      var opcode = instr & 0x7f;
-      var imm11_5 = ((instr >> 25) & 0x7f) << 5;
-      var imm4_0 = (instr >> 7) & 0x1f;
-      var funct3 = (instr >> 12) & 0x7;
-      var rs1 = (instr >> 15) & 0x1f;
-      var rs2 = (instr >> 20) & 0x1f;
-      var imm = signExtend32(imm11_5 | imm4_0, 12);
-      return new SInstruct(opcode, rs1, rs2, funct3, imm);
-    }
-  }
-
-  static record BInstruct(int opcode, int rs1, int rs2, int funct3, int imm) {
-    public static BInstruct decode(int instr) {
-      var opcode = instr & 0x7f;
-      var funct3 = (instr >> 12) & 0x7;
-      var rs1 = (instr >> 15) & 0x1f;
-      var rs2 = (instr >> 20) & 0x1f;
-      var imm12 = (instr >> 31) << 12;
-      var imm11 = ((instr >> 7) & 0x1) << 11;
-      var imm10_5 = ((instr >> 25) & 0x3f) << 5;
-      var imm4_1 = ((instr >> 8) & 0xf) << 1;
-      var imm = signExtend32(imm12 | imm11 | imm10_5 | imm4_1, 13);
-      return new BInstruct(opcode, rs1, rs2, funct3, imm);
-    }
-  }
-
-  static record JInstruct(int opcode, int rd, int imm) {
-    public static JInstruct decode(int instr) {
-      var opcode = instr & 0x7f;
-      var rd = (instr >> 7) & 0x1f;
-      var imm20 = (instr >> 31) << 20;
-      var imm10_1 = ((instr >> 21) & 0x3ff) << 1;
-      var imm11 = ((instr >> 20) & 0x1) << 11;
-      var imm19_12 = ((instr >> 12) & 0xff) << 12;
-      var imm = signExtend32(imm20 | imm19_12 | imm11 | imm10_1, 21);
-      return new JInstruct(opcode, rd, imm);
-    }
+    var addr = cpu.getReg(storeNode.rs1) + storeNode.offset;
+    storeNode.execute(addr, cpu.getReg(storeNode.rs2));
   }
 }

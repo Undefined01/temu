@@ -1,15 +1,14 @@
 package website.lihan.temu.device;
 
+import static website.lihan.temu.cpu.Utils.BYTES;
+
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
-import com.oracle.truffle.api.memory.ByteArraySupport;
 
 @ExportLibrary(DeviceLibrary.class)
 public final class RTC {
-  public final long baseAddress;
-
-  private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
+  private final long baseAddress;
 
   public RTC() {
     this(0xa0000048L);

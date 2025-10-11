@@ -1,5 +1,7 @@
 package website.lihan.temu.device;
 
+import static website.lihan.temu.cpu.Utils.BYTES;
+
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
@@ -47,8 +49,29 @@ public final class Memory {
   @ExportMessage
   @ExplodeLoop
   public int read(long address, byte[] buffer, int length) {
+    length = Math.min(length, memory.length);
     System.arraycopy(memory, (int) address, buffer, 0, length);
     return 0;
+  }
+
+  @ExportMessage
+  public byte read1(long address) {
+    return BYTES.getByte(memory, (int) address);
+  }
+
+  @ExportMessage
+  public short read2(long address) {
+    return BYTES.getShort(memory, (int) address);
+  }
+
+  @ExportMessage
+  public int read4(long address) {
+    return BYTES.getInt(memory, (int) address);
+  }
+
+  @ExportMessage
+  public long read8(long address) {
+    return BYTES.getLong(memory, (int) address);
   }
 
   @ExportMessage
@@ -56,5 +79,25 @@ public final class Memory {
   public int write(long address, byte[] buffer, int length) {
     System.arraycopy(buffer, 0, memory, (int) address, length);
     return 0;
+  }
+
+  @ExportMessage
+  public void write1(long address, byte value) {
+    BYTES.putByte(memory, (int) address, value);
+  }
+
+  @ExportMessage
+  public void write2(long address, short value) {
+    BYTES.putShort(memory, (int) address, value);
+  }
+
+  @ExportMessage
+  public void write4(long address, int value) {
+    BYTES.putInt(memory, (int) address, value);
+  }
+
+  @ExportMessage
+  public void write8(long address, long value) {
+    BYTES.putLong(memory, (int) address, value);
   }
 }

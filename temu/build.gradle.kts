@@ -8,7 +8,7 @@
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
-    id("com.diffplug.spotless") version "7.2.1"
+    id("com.diffplug.spotless") version "8.0.0"
     id("me.champeau.jmh") version "0.7.3"
     id("org.openjfx.javafxplugin") version "0.1.0"
 }

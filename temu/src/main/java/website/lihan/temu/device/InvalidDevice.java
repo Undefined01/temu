@@ -1,43 +1,30 @@
 package website.lihan.temu.device;
 
-import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
+import website.lihan.temu.Utils;
 
 @ExportLibrary(DeviceLibrary.class)
-public final class SerialPort {
-  private final long baseAddress;
-
-  public SerialPort() {
-    this(0xa00003f8L);
-  }
-
-  public SerialPort(long baseAddress) {
-    this.baseAddress = baseAddress;
-  }
-
+public final class InvalidDevice {
   @ExportMessage
   public long getStartAddress() {
-    return baseAddress;
+    return 0;
   }
 
   @ExportMessage
   public long getEndAddress() {
-    return baseAddress + 8;
+    return 0;
   }
 
   @ExportMessage
   public int read(long address, byte[] data, int length) {
+    Utils.printf("[Bus] read from invalid address: 0x%08x\n", address);
     return -1;
   }
 
   @ExportMessage
-  @TruffleBoundary
   public int write(long address, byte[] data, int length) {
-    if (address == 0 && length == 1) {
-      System.out.print((char) data[0]);
-      return 0;
-    }
+    Utils.printf("[Bus] write to invalid address: 0x%08x\n", address);
     return -1;
   }
 }

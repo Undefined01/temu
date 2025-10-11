@@ -4,63 +4,63 @@ import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
-import com.oracle.truffle.api.nodes.Node.Children;
 import website.lihan.temu.EmulatorGUI;
-import website.lihan.temu.Utils;
 
 public final class Bus extends Node {
+  private static final InvalidDevice INVALID_DEVICE = new InvalidDevice();
+
   @CompilationFinal(dimensions = 1)
-  private Object[] regions;
+  private Object[] devices;
 
-  @Children private DeviceLibrary[] regionLibraries;
+  @CompilationFinal(dimensions = 1)
+  private long[] regionStartAddresses;
 
-  public Bus(Object[] regions) {
-    this.regions = regions;
-    this.regionLibraries = new DeviceLibrary[regions.length];
-    for (int i = 0; i < regions.length; i++) {
-      this.regionLibraries[i] = DeviceLibrary.getFactory().create(regions[i]);
+  @CompilationFinal(dimensions = 1)
+  private long[] regionEndAddresses;
+
+  public Bus(Object[] devices) {
+    this.devices = devices;
+
+    regionStartAddresses = new long[devices.length];
+    regionEndAddresses = new long[devices.length];
+    var deviceLib = DeviceLibrary.getUncached();
+    for (int i = 0; i < devices.length; i++) {
+      var device = devices[i];
+      regionStartAddresses[i] = deviceLib.getStartAddress(device);
+      regionEndAddresses[i] = deviceLib.getEndAddress(device);
     }
   }
 
   @TruffleBoundary
   public int executeRead(long address, byte[] data, int length) {
-    for (int i = 0; i < regions.length; i++) {
-      var region = regions[i];
-      var regionLib = regionLibraries[i];
-      if (regionLib.getStartAddress(region) <= address
-          && address < regionLib.getEndAddress(region)) {
-        address -= regionLib.getStartAddress(region);
-        return regionLib.read(region, address, data, length);
-      }
+    var device = findDevice(address);
+    if (device != null) {
+      var deviceLib = DeviceLibrary.getUncached();
+      address -= deviceLib.getStartAddress(device);
+      return deviceLib.read(device, address, data, length);
     }
-    Utils.printf("[Bus] read from invalid address: 0x%08x\n", address);
     return -1;
   }
 
   @TruffleBoundary
   public int executeWrite(long address, byte[] data, int length) {
-    var regionIdx = findRegion(address);
-    if (regionIdx < 0) {
-      Utils.printf("[Bus] write to invalid address: 0x%08x\n", address);
-      return -1;
+    var device = findDevice(address);
+    if (device != null) {
+      var deviceLib = DeviceLibrary.getUncached();
+      address -= deviceLib.getStartAddress(device);
+      return deviceLib.write(device, address, data, length);
     }
-    var region = regions[regionIdx];
-    var regionLib = regionLibraries[regionIdx];
-    address -= regionLib.getStartAddress(region);
-    return regionLib.write(region, address, data, length);
+    return -1;
   }
 
   @ExplodeLoop
-  private int findRegion(long address) {
-    for (int i = 0; i < regions.length; i++) {
-      var region = regions[i];
-      var regionLib = regionLibraries[i];
-      if (regionLib.getStartAddress(region) <= address
-          && address < regionLib.getEndAddress(region)) {
-        return i;
+  public Object findDevice(long address) {
+    for (int i = 0; i < devices.length; i++) {
+      if (regionStartAddresses[i] <= address && address < regionEndAddresses[i]) {
+        return devices[i];
       }
     }
-    return -1;
+    return INVALID_DEVICE;
   }
 
   @TruffleBoundary

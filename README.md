@@ -9,12 +9,13 @@ To build this project, ensure you have [GraalVM](https://www.graalvm.org/) 21 in
 
 You can find the executable `temu/build/install/temu` directory after building the project.
 
+Some useful options for running the emulator:
 
 ```
 export JAVA_OPTS="-Djdk.graal.Dump=Truffle:5 -Djdk.graal.PrintGraph=Network -XX:StartFlightRecording=filename=test.jfr -Xss128M"
 temu/build/install/temu/bin/temu --engine.CompileImmediately --engine.BackgroundCompilation=false --engine.TraceCompilation temu/src/test/asm/instr-test/build/addi.bin
 
-temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/coremark/build/coremark-10000-iteration-riscv64-nemu.bin --engine.TraceCompilationDetails --engine.CompilationStatistics --engine.TraceCompilationAST --compiler.TraceInlining --compiler.TracePerformanceWarnings=all --compiler.InstrumentBoundaries --compiler.InstrumentBranches --engine.SpecializationStatistics --log.file=a.txt
+temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/coremark/build/coremark-10000-iteration-riscv64-nemu.bin --engine.TraceCompilationDetails --engine.CompilationStatistics --engine.TraceCompilationAST --compiler.TraceInlining --compiler.TracePerformanceWarnings=all --engine.SpecializationStatistics --log.file=a.txt
 ```
 
 # Tests
@@ -64,7 +65,7 @@ Result:
 Running CoreMark for 10000 iterations
 2K performance run parameters for coremark.
 CoreMark Size    : 666
-Total time (ms)  : 16933
+Total time (ms)  : 9145
 Iterations       : 10000
 Compiler version : GCC10.2.1 20210110
 seedcrc          : 0xe9f5
@@ -72,10 +73,10 @@ seedcrc          : 0xe9f5
 [0]crcmatrix     : 0x1fd7
 [0]crcstate      : 0x8e3a
 [0]crcfinal      : 0x988c
-Finished in 16933 ms.
+Finished in 9145 ms.
 ==================================================
-CoreMark Iterations/Sec 590562.81
-website.lihan.temu.cpu.HaltException: Halt at 80002784 with code 0
+CoreMark Iterations/Sec 1093493.71
+website.lihan.temu.cpu.HaltException: Halt at 80002794 with code 0
 ```
 
 Compared to NEMU:
@@ -115,29 +116,29 @@ Result:
 Empty mainargs. Use "ref" by default
 ======= Running MicroBench [input *ref*] =======
 [qsort] Quick sort: * Passed.
-  min time: 239 ms [2139]
+  min time: 315 ms [1623]
 [queen] Queen placement: * Passed.
-  min time: 434 ms [1084]
+  min time: 610 ms [771]
 [bf] Brainf**k interpreter: * Passed.
-  min time: 4689 ms [504]
+  min time: 3988 ms [593]
 [fib] Fibonacci number: * Passed.
-  min time: 3004 ms [942]
+  min time: 863 ms [3281]
 [sieve] Eratosthenes sieve: * Passed.
-  min time: 2638 ms [1492]
+  min time: 343 ms [11475]
 [15pz] A* 15-puzzle search: * Passed.
-  min time: 554 ms [809]
+  min time: 462 ms [970]
 [dinic] Dinic's maxflow algorithm: * Passed.
-  min time: 1087 ms [1001]
+  min time: 980 ms [1110]
 [lzip] Lzip compression: * Passed.
-  min time: 479 ms [1585]
+  min time: 486 ms [1562]
 [ssort] Suffix sort: * Passed.
-  min time: 256 ms [1759]
+  min time: 313 ms [1438]
 [md5] MD5 digest: * Passed.
-  min time: 2120 ms [813]
+  min time: 697 ms [2473]
 ==================================================
-MicroBench PASS        1212 Marks
+MicroBench PASS        2529 Marks
                    vs. 100000 Marks (i7-7700K @ 4.20GHz)
-Total time: 19759 ms
+Total time: 13813 ms
 website.lihan.temu.cpu.HaltException: Halt at 80005460 with code 0
 ```
 

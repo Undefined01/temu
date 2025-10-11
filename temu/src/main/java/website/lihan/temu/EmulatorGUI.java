@@ -11,6 +11,7 @@ import website.lihan.temu.device.Keyboard;
 import website.lihan.temu.device.VGA;
 
 public class EmulatorGUI {
+  private static boolean started = false;
 
   private Keyboard keyboard;
   private VGA vga;
@@ -25,7 +26,7 @@ public class EmulatorGUI {
   }
 
   public void show() {
-    Platform.startup(
+    Runnable initFunc =
         () -> {
           Platform.runLater(
               () -> {
@@ -34,7 +35,13 @@ public class EmulatorGUI {
                 }
                 stage.show();
               });
-        });
+        };
+    if (started) {
+      initFunc.run();
+    } else {
+      Platform.startup(initFunc);
+      started = true;
+    }
   }
 
   private void createStage() {

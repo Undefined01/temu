@@ -1,33 +1,28 @@
 package website.lihan.temu.cpu;
 
-import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.RootNode;
-import org.graalvm.collections.EconomicMap;
 import website.lihan.temu.Rv64BytecodeLanguage;
+import website.lihan.temu.Rv64Context;
 import website.lihan.temu.Utils;
 
 public class Rv64ExecutionRootNode extends RootNode {
   Rv64BytecodeLanguage language;
-  EconomicMap<Long, EconomicMap<Integer, Rv64BytecodeRootNode>> entryPoints = EconomicMap.create();
-
-  public static final int PAGE_SIZE = 4 * 1024;
-  public static final long PAGE_ADDR_MASK = 0xFFFFFFFFFFFFF000L;
+  Rv64Context context;
 
   private final byte[] bc;
 
   public Rv64ExecutionRootNode(Rv64BytecodeLanguage language, byte[] bc) {
     super(language);
     this.language = language;
+    this.context = Rv64Context.get(this);
     this.bc = bc;
   }
 
   @Override
   public Object execute(VirtualFrame frame) {
-    var cpu = new Rv64State();
-    var page = EconomicMap.<Integer, Rv64BytecodeRootNode>create();
-    var pageAddr = cpu.pc & PAGE_ADDR_MASK;
+    var cpu = this.context.getState();
     while (true) {
       try {
         // long pageAddr = pc & PAGE_ADDR_MASK;
@@ -38,14 +33,7 @@ public class Rv64ExecutionRootNode extends RootNode {
         //   entryPoints.put(pageAddr, page);
         // }
         // var subAddr = (int)(pc & ~PAGE_ADDR_MASK);
-        var subAddr = (int) (cpu.pc - 0x80000000L);
-        var rootNode = page.get(subAddr);
-        if (rootNode == null) {
-          CompilerDirectives.transferToInterpreterAndInvalidate();
-          var node = new Rv64BytecodeNode(pageAddr, bc, subAddr);
-          rootNode = new Rv64BytecodeRootNode(language, node);
-          page.put(subAddr, rootNode);
-        }
+        var rootNode = context.getExecPageCache().getByEntryPoint(cpu.pc);
         IndirectCallNode.getUncached().call(rootNode.getCallTarget(), cpu);
       } catch (JumpException e) {
         cpu.pc = e.getTargetPc();
@@ -60,7 +48,7 @@ public class Rv64ExecutionRootNode extends RootNode {
         return 0;
       } catch (Throwable t) {
         Utils.printf("Unexpected exception: %s\n", t);
-        t.printStackTrace();
+        Utils.printStackTrace(t);
         return -1;
       }
     }

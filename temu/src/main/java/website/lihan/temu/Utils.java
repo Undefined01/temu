@@ -8,6 +8,11 @@ public class Utils {
     System.out.printf(format, args);
   }
 
+  @TruffleBoundary
+  public static void printStackTrace(Throwable t) {
+    t.printStackTrace();
+  }
+
   public static long signedUnsignedMultiplyHigh(long s, long u) {
     long high = Math.multiplyHigh(s, u);
     if (u < 0) {

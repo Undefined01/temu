@@ -16,6 +16,7 @@ import com.oracle.truffle.api.object.DynamicObject;
 import com.oracle.truffle.api.object.DynamicObjectLibrary;
 import com.oracle.truffle.api.object.Shape;
 import java.util.Objects;
+import website.lihan.temu.cpu.ExecPageCache;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.device.Bus;
 
@@ -27,6 +28,7 @@ public final class Rv64Context {
 
   public final Bus bus;
   public final Rv64State state;
+  public final ExecPageCache execPageCache;
 
   public static Rv64Context get(Node node) {
     return REF.get(node);
@@ -36,6 +38,11 @@ public final class Rv64Context {
     this.language = language;
     this.state = new Rv64State();
     this.bus = bus;
+    this.execPageCache = new ExecPageCache(this);
+  }
+
+  public Rv64BytecodeLanguage getLanguage() {
+    return language;
   }
 
   public Rv64State getState() {
@@ -44,6 +51,10 @@ public final class Rv64Context {
 
   public Bus getBus() {
     return bus;
+  }
+
+  public ExecPageCache getExecPageCache() {
+    return execPageCache;
   }
 
   public Object createScopeObject() {
