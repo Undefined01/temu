@@ -202,6 +202,12 @@ To build rt-thread, you need to have `scons` installed on your system.
 
 ```
 make -C temu/src/test/rt-thread
-temu/build/install/temu/bin/temu temu/src/test/rt-thread/build/rtthread-riscv64-nemu.bin
+temu/build/install/temu/bin/temu temu/src/test/rt-thread/repo/bsp/abstract-machine/build/rtthread-riscv64-nemu.bin
+```
+
+```
+make -C temu/src/test/rt-thread
+RTT_CC_PREFIX=riscv64-unknown-linux-musl- scons --verbose
+temu/build/install/temu/bin/temu temu/src/test/rt-thread/repo/bsp/abstract-machine/build/rtthread-riscv64-nemu.bin
 ```
 

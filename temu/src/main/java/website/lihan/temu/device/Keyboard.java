@@ -7,6 +7,7 @@ import com.oracle.truffle.api.library.ExportMessage;
 import java.util.LinkedList;
 import java.util.Queue;
 import javafx.scene.input.KeyCode;
+import website.lihan.temu.Utils;
 
 @ExportLibrary(DeviceLibrary.class)
 public final class Keyboard {
@@ -43,6 +44,12 @@ public final class Keyboard {
     BYTES.putInt(temp, 0, key);
     System.arraycopy(temp, 0, data, 0, length);
     return length;
+  }
+
+  @ExportMessage
+  public int read4(long address) {
+    var key = keyQueue.isEmpty() ? NemuKeyCode.NONE.code : keyQueue.poll();
+    return key;
   }
 
   @ExportMessage

@@ -3,9 +3,12 @@ package website.lihan.temu.cpu;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.RootNode;
+
 import website.lihan.temu.Rv64BytecodeLanguage;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.Utils;
+import website.lihan.temu.cpu.csr.CsrId;
+import website.lihan.temu.cpu.instr.SystemOp;
 
 public class Rv64ExecutionRootNode extends RootNode {
   Rv64BytecodeLanguage language;
@@ -39,11 +42,7 @@ public class Rv64ExecutionRootNode extends RootNode {
       } catch (JumpException e) {
         cpu.pc = e.getTargetPc();
       } catch (InterruptException e) {
-        cpu.writeCSR(Rv64State.CSR.SEPC, e.pc);
-        cpu.writeCSR(Rv64State.CSR.SCAUSE, e.cause);
-        var mtvec = cpu.readCSR(Rv64State.CSR.STVEC);
-        // Utils.printf("Interrupt: pc=%08x, cause=%d, jumps to vec=%08x\n", e.pc, e.cause, mtvec);
-        cpu.pc = mtvec;
+        SystemOp.doInterrupt(cpu, e);
       } catch (HaltException e) {
         Utils.printf("%s\n", e);
         return 0;

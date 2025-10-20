@@ -13,11 +13,12 @@ repo/patched: repo/README.md
 	touch repo/patched
 
 rv64ui: repo/patched
-	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- rv64ui
-	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- rv64um
+ 	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- rv64ui
+ 	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- rv64um
+	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- rv64mi
 
 clean:
-	$(MAKE) -C repo clean
+	$(MAKE) -C repo/isa clean
 	rm repo/isa/rv*-*-*
 
 all: rv64ui

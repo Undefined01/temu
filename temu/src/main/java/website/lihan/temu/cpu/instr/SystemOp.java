@@ -1,5 +1,7 @@
 package website.lihan.temu.cpu.instr;
 
+import com.oracle.truffle.api.CompilerDirectives;
+import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.HaltException;
 import website.lihan.temu.cpu.IllegalInstructionException;
 import website.lihan.temu.cpu.InterruptException;
@@ -7,87 +9,114 @@ import website.lihan.temu.cpu.JumpException;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.RvUtils;
 import website.lihan.temu.cpu.RvUtils.IInstruct;
+import website.lihan.temu.cpu.csr.CsrId;
+import website.lihan.temu.cpu.csr.MStatus;
+import website.lihan.temu.cpu.csr.SStatus;
+import website.lihan.temu.cpu.Opcodes.SystemFunct12;
+import website.lihan.temu.cpu.Opcodes.SystemFunct3;
+import com.oracle.truffle.api.nodes.Node;
+import website.lihan.temu.cpu.instr.CsrRWNode;
 
 public class SystemOp {
-  public static void execute(Rv64State cpu, int instr) {
-    final var r = RvUtils.RInstruct.decode(instr);
-    final var op1 = cpu.getReg(r.rs1());
-    final var op2 = cpu.getReg(r.rs2());
-    final var funct3 = r.funct3();
-    final var funct7 = r.funct7();
-    final var shamt = op2 & 0x3f;
-    {
+  public static void execute(Rv64State cpu, int instr, Node[] nodes) {
+      if ((instr & 0x80) != 0) {
+        doCsrRW(cpu, instr, nodes);
+        return;
+      }
       final var i = IInstruct.decode(instr);
       switch (i.funct3()) {
-        case 0b000 -> {
-          switch (i.imm()) {
-            case 0b000000000000 -> {
-              // ECALL
-              throw InterruptException.create(cpu.pc, 9);
-            }
-            case 0b000000000001 -> {
-              // EBREAK
-              throw HaltException.create(cpu.pc, cpu.getReg(10));
-            }
-            case 0b000100000010 -> {
-              // SRET
-              var sstatus = cpu.readCSR(Rv64State.CSR.SSTATUS);
-              var sepc = cpu.readCSR(Rv64State.CSR.SEPC);
-              var s = (sstatus >> 8) & 1; // SPP
-              sstatus = (sstatus & ~(1 << 1)) | ((sstatus & (1 << 5)) >> 4); // SPIE -> SIE
-              sstatus &= ~(1 << 5); // SPIE = 0
-              if (s == 1) {
-                sstatus |= 1 << 3; // SIE = 1
-              } else {
-                sstatus &= ~(1 << 3); // SIE = 0
-              }
-              cpu.writeCSR(Rv64State.CSR.SSTATUS, sstatus);
-              throw JumpException.create(sepc);
-            }
-            default -> throw IllegalInstructionException.create(cpu.pc, instr);
-          }
-        }
-        case 0b001 -> {
-          // CSRRW
-          var oldRegValue = cpu.getReg(i.rs1());
-          var oldCSRValue = cpu.readCSR(i.imm());
-          cpu.setReg(i.rd(), oldCSRValue);
-          cpu.writeCSR(i.imm(), oldRegValue);
-        }
-        case 0b010 -> {
-          // CSRRS
-          var oldRegValue = cpu.getReg(i.rs1());
-          var oldCSRValue = cpu.readCSR(i.imm());
-          cpu.setReg(i.rd(), oldCSRValue);
-          cpu.writeCSR(i.imm(), oldCSRValue | oldRegValue);
-        }
-        case 0b011 -> {
-          // CSRRC
-          var oldRegValue = cpu.getReg(i.rs1());
-          var oldCSRValue = cpu.readCSR(i.imm());
-          cpu.setReg(i.rd(), oldCSRValue);
-          cpu.writeCSR(i.imm(), oldCSRValue & ~oldRegValue);
-        }
-        case 0b101 -> {
-          // CSRRWI
-          var oldCSRValue = cpu.readCSR(i.imm());
-          cpu.setReg(i.rd(), oldCSRValue);
-          cpu.writeCSR(i.imm(), i.rs1());
-        }
-        case 0b110 -> {
-          // CSRRSI
-          var oldCSRValue = cpu.readCSR(i.imm());
-          cpu.setReg(i.rd(), oldCSRValue);
-          cpu.writeCSR(i.imm(), oldCSRValue | i.rs1());
-        }
-        case 0b111 -> {
-          // CSRRCI
-          var oldCSRValue = cpu.readCSR(i.imm());
-          cpu.setReg(i.rd(), oldCSRValue);
-          cpu.writeCSR(i.imm(), oldCSRValue & ~i.rs1());
-        }
+        case SystemFunct3.PRIV -> doPriv(cpu, i);
         default -> throw IllegalInstructionException.create(cpu.pc, instr);
       }
+  }
+
+  private static void doCsrRW(Rv64State cpu, int instr, Node[] nodes) {
+    final var csrNode = CsrRWNode.class.cast(nodes[instr >> 8]);
+    switch (csrNode.funct3) {
+      case SystemFunct3.CSRRW -> {
+        var oldRegValue = cpu.getReg(csrNode.rs1);
+        var oldCSRValue = csrNode.read();
+        cpu.setReg(csrNode.rd, oldCSRValue);
+        csrNode.write(oldRegValue);
+      }
+      case SystemFunct3.CSRRS -> {
+        var oldRegValue = cpu.getReg(csrNode.rs1);
+        var oldCSRValue = csrNode.read();
+        cpu.setReg(csrNode.rd, oldCSRValue);
+        csrNode.write(oldCSRValue | oldRegValue);
+      }
+      case SystemFunct3.CSRRC -> {
+        var oldRegValue = cpu.getReg(csrNode.rs1);
+        var oldCSRValue = csrNode.read();
+        cpu.setReg(csrNode.rd, oldCSRValue);
+        csrNode.write(oldCSRValue & ~oldRegValue);
+      }
+      case SystemFunct3.CSRRWI -> {
+        var oldCSRValue = csrNode.read();
+        cpu.setReg(csrNode.rd, oldCSRValue);
+        csrNode.write(csrNode.rs1);
+      }
+      case SystemFunct3.CSRRSI -> {
+        var oldCSRValue = csrNode.read();
+        cpu.setReg(csrNode.rd, oldCSRValue);
+        csrNode.write( oldCSRValue | csrNode.rs1);
+      }
+      case SystemFunct3.CSRRCI -> {
+        var oldCSRValue = csrNode.read();
+        cpu.setReg(csrNode.rd, oldCSRValue);
+        csrNode.write( oldCSRValue & ~csrNode.rs1);
+      }
+      default -> throw CompilerDirectives.shouldNotReachHere();
     }
+  }
+
+  private static void doPriv(Rv64State cpu, IInstruct i) {
+    switch (i.imm()) {
+      case SystemFunct12.ECALL -> {switch (cpu.getPrivilegeLevel()) {
+        case 1 -> throw InterruptException.create(cpu.pc, InterruptException.Cause.ECALL_FROM_S_MODE);
+        case 3 -> throw InterruptException.create(cpu.pc, InterruptException.Cause.ECALL_FROM_M_MODE);
+        default -> throw CompilerDirectives.shouldNotReachHere();
+      }}
+      case SystemFunct12.EBREAK -> throw HaltException.create(cpu.pc, cpu.getReg(10));
+      case SystemFunct12.SRET -> {
+        final var mstatus = new MStatus(cpu.getCsrFile().mstatus.getValue());
+        final var sstatus = new SStatus(mstatus);
+        final var sepc = cpu.getCsrFile().sepc.getValue();
+        sstatus.setSIE(sstatus.getSPIE());
+        sstatus.setSPIE(true);
+        cpu.getCsrFile().sstatus.setValue(sstatus.getValue());
+        throw JumpException.create(sepc);
+      }
+      case SystemFunct12.MRET -> {
+        final var mstatus = new MStatus(cpu.getCsrFile().mstatus.getValue());
+        final var mepc = cpu.getCsrFile().mepc;
+        mstatus.setMIE(mstatus.getMPIE());
+        mstatus.setMPIE(true);
+        cpu.getCsrFile().mstatus.setValue(mstatus.getValue());
+        throw JumpException.create(mepc.getValue());
+      }
+      default -> throw IllegalInstructionException.create("Unsupported PRIV funct12: pc=%08x, funct12=%03x", cpu.pc, i.imm());
+    }
+  }
+
+  public static void doInterrupt(Rv64State cpu, InterruptException e) {
+    // cpu.getCsrFile().mepc.setValue(e.pc);
+    // cpu.getCsrFile().mcause.setValue(e.cause);
+    // final var mstatus = new MStatus(cpu.getCsrFile().mstatus.getValue());
+    // mstatus.setMPIE(mstatus.getMIE());
+    // mstatus.setMIE(false);
+    // cpu.getCsrFile().mstatus.setValue(mstatus.getValue());
+    // cpu.pc = cpu.getCsrFile().mtvec.getValue();
+
+    // Assumes all interrupts are delegated to S-mode
+    cpu.getCsrFile().sepc.setValue(e.pc);
+    cpu.getCsrFile().scause.setValue(e.cause);
+    final var mstatus = new MStatus(cpu.getCsrFile().mstatus.getValue());
+    final var sstatus = new SStatus(mstatus);
+    sstatus.setSPP(1);
+    sstatus.setSPIE(sstatus.getSIE());
+    sstatus.setSIE(false);
+    cpu.getCsrFile().sstatus.setValue(sstatus.getValue());
+    cpu.pc = cpu.getCsrFile().stvec.getValue();
   }
 }

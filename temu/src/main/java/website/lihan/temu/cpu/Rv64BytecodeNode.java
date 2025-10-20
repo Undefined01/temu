@@ -11,6 +11,7 @@ import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 import java.util.ArrayList;
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.RvUtils.BInstruct;
 import website.lihan.temu.cpu.RvUtils.IInstruct;
 import website.lihan.temu.cpu.RvUtils.JInstruct;
@@ -18,6 +19,7 @@ import website.lihan.temu.cpu.RvUtils.SInstruct;
 import website.lihan.temu.cpu.RvUtils.UInstruct;
 import website.lihan.temu.cpu.instr.BranchNode;
 import website.lihan.temu.cpu.instr.CallNode;
+import website.lihan.temu.cpu.instr.CsrRWNode;
 import website.lihan.temu.cpu.instr.JalNode;
 import website.lihan.temu.cpu.instr.LoadNode;
 import website.lihan.temu.cpu.instr.LoadNodeGen;
@@ -29,6 +31,8 @@ import website.lihan.temu.cpu.instr.StoreNode;
 import website.lihan.temu.cpu.instr.StoreNodeGen;
 import website.lihan.temu.cpu.instr.SystemOp;
 import website.lihan.temu.device.Bus;
+import website.lihan.temu.device.RTC;
+import website.lihan.temu.cpu.Opcodes.SystemFunct3;
 
 public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   @CompilationFinal long baseAddr;
@@ -46,6 +50,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
 
   public Rv64BytecodeNode(long baseAddr, byte[] bc, int entryBci) {
+    assert baseAddr <= entryBci && entryBci < baseAddr + bc.length;
     this.baseAddr = baseAddr;
     this.bc = bc;
     this.entryBci = entryBci;
@@ -98,6 +103,10 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       // Utils.printf("pc=%08x: %08x, sp=%08x\n", cpu.pc, instr, cpu.getReg(2));
       int nextBci = bci + 4;
 
+      if (cpu.isInterruptEnabled() && RTC.checkInterrupt()) {
+        throw InterruptException.create(cpu.pc, InterruptException.Cause.STIMER);
+      }
+
       int opcode = instr & 0x7f;
       switch (opcode) {
         case Opcodes.OP_IMM -> OpImm.execute(cpu, instr);
@@ -117,10 +126,9 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           final var nodeIdx = (instr >> 8);
           if (isCall) {
             // This is likely a function call from the ABI convention.
-            // If the following ret instruction (jalr zero, 0(ra)) is jumping back to the caller (ra
-            // == current_pc + 4),
-            // we can optimize out the JumpException throwing and just return to the caller
-            // directly.
+            // If the following ret instruction (jalr zero, 0(ra)) is jumping back to
+            // the caller (ra == current_pc + 4), we can optimize out the JumpException
+            // and simply return to the caller directly.
             CallNode.class.cast(nodes[nodeIdx]).call(cpu);
           } else {
             final var jalNode = JalNode.class.cast(nodes[nodeIdx]);
@@ -168,7 +176,10 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         }
         case Opcodes.LOAD -> doLoad(cpu, bci, instr);
         case Opcodes.STORE -> doStore(cpu, bci, instr);
-        case Opcodes.SYSTEM -> SystemOp.execute(cpu, instr);
+        case Opcodes.SYSTEM -> SystemOp.execute(cpu, instr, nodes);
+        case Opcodes.FENCE -> {
+          // No operation
+        }
         default -> throw IllegalInstructionException.create(getPc(bci), instr);
       }
 
@@ -251,6 +262,18 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           nodeList.add(StoreNodeGen.create(length, s.rs1(), s.rs2(), s.imm()));
           instr = Opcodes.STORE | (isValidInstr ? 0x80 : 0) | (nodeIdx << 8);
           BYTES.putInt(bc, bci, instr);
+        }
+        case Opcodes.SYSTEM -> {
+          final var i = IInstruct.decode(instr);
+          switch (i.funct3()) {
+            case SystemFunct3.CSRRW, SystemFunct3.CSRRS, SystemFunct3.CSRRC,
+                SystemFunct3.CSRRWI, SystemFunct3.CSRRSI, SystemFunct3.CSRRCI -> {
+              final var nodeIdx = nodeList.size();
+              nodeList.add(new CsrRWNode(i.imm() & 0xfff, i.rs1(), i.rd(), i.funct3()));
+              instr = Opcodes.SYSTEM | (0x80) | (nodeIdx << 8);
+              BYTES.putInt(bc, bci, instr);
+            }
+          }
         }
       }
     }

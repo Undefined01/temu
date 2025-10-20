@@ -7,11 +7,10 @@ import org.graalvm.collections.EconomicMap;
 import website.lihan.temu.Rv64Context;
 
 public class ExecPageCache {
-  public static final int PAGE_SIZE = 4 * 1024 * 1024;
   //   public static final int PAGE_SIZE = 4 * 1024;
-  public static final long PAGE_ADDR_MASK = 0xFFFFFFFFFFFFF000L;
-
-  private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
+  // public static final long PAGE_ADDR_MASK = 0xFFFFFFFFFFFFF000L;
+  public static final long PAGE_ADDR_MASK = 0xFFFFFFFFFF000000L;
+  public static final int PAGE_SIZE = (int)~PAGE_ADDR_MASK + 1;
 
   private Rv64Context context;
 
@@ -26,8 +25,8 @@ public class ExecPageCache {
   }
 
   public Rv64BytecodeRootNode getByEntryPoint(long entryAddr) {
-    var pageAddr = 0x80000000L;
-    var subAddr = (int) (entryAddr - 0x80000000L);
+    var pageAddr = entryAddr & PAGE_ADDR_MASK;
+    var subAddr = (int) (entryAddr - pageAddr);
     var rootNode = rootCache.get(subAddr);
     if (rootNode == null) {
       CompilerDirectives.transferToInterpreterAndInvalidate();

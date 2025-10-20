@@ -1,15 +1,20 @@
 package website.lihan.temu.cpu;
 
+import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
+
+import website.lihan.temu.Utils;
+import website.lihan.temu.cpu.csr.CsrFile;
+import website.lihan.temu.cpu.csr.CsrLibrary;
 
 public final class Rv64State {
   @CompilationFinal(dimensions = 0)
   private final long[] regs = new long[32];
 
-  @CompilationFinal(dimensions = 0)
-  private final long[] csrs = new long[CSR.COUNT];
+  private final CsrFile csrs = new CsrFile();
 
   public long pc = 0x80000000L;
+  private int privilegeLevel = 1;
 
   public long getReg(int reg) {
     if (reg == 0) {
@@ -24,35 +29,26 @@ public final class Rv64State {
     }
   }
 
-  public long readCSR(int csr) {
-    return csrs[CSR.getIndex(csr)];
+  public Object getCsrById(int csrId) {
+    return csrs.getCsrById(csrId);
   }
 
-  public void writeCSR(int csr, long value) {
-    csrs[CSR.getIndex(csr)] = value;
+  public CsrFile getCsrFile() {
+    return csrs;
   }
 
-  public static class CSR {
-    public static final int SSTATUS = 0x100;
-    public static final int SIE = 0x104;
-    public static final int STVEC = 0x105;
-    public static final int SSCRATCH = 0x140;
-    public static final int SEPC = 0x141;
-    public static final int SCAUSE = 0x142;
-    public static final int STVAL = 0x143;
-    public static final int COUNT = 7;
+  public int getPrivilegeLevel() {
+    return privilegeLevel;
+  }
 
-    public static int getIndex(int csr) {
-      return switch (csr) {
-        case SSTATUS -> 0;
-        case SIE -> 1;
-        case STVEC -> 2;
-        case SSCRATCH -> 3;
-        case SEPC -> 4;
-        case SCAUSE -> 5;
-        case STVAL -> 6;
-        default -> throw IllegalInstructionException.create("Unknown CSR: %04x", csr);
-      };
+  public boolean isInterruptEnabled() {
+    switch (privilegeLevel) {
+      case 1:
+        return csrs.mstatus.getSIE();
+      case 3:
+        return csrs.mstatus.getMIE();
+      default:
+        throw CompilerDirectives.shouldNotReachHere();
     }
   }
 }

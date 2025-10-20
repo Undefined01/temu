@@ -36,6 +36,6 @@ public class CallNode extends Node {
   }
 
   public static boolean jalrIsReturn(VirtualFrame frame, long nextPc) {
-    return frame.getArguments().length > 2 && (long) frame.getArguments()[1] == nextPc;
+    return frame.getArguments().length > 1 && (long) frame.getArguments()[1] == nextPc;
   }
 }
