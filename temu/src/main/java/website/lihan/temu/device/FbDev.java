@@ -9,7 +9,14 @@ import javafx.scene.image.Image;
 import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
 
-public final class VGA {
+/// A simple framebuffer device with control registers and a pixel buffer.
+/// Control registers:
+/// 0x00: width (16 bits)
+/// 0x02: height (16 bits)
+/// 0x04: sync request (write 1 to request a screen update)
+/// Framebuffer:
+/// Pixels are stored in BGRA format, 4 bytes per pixel, in row-major order.
+public final class FbDev {
   private final int screenWidth = 400;
   private final int screenHeight = 300;
 
@@ -22,11 +29,11 @@ public final class VGA {
   private final byte[] vmem;
   private final WritableImage image;
 
-  public VGA() {
+  public FbDev() {
     this(0xa0000100L, 0xa1000000L);
   }
 
-  public VGA(long controlAddress, long frameBufferAddress) {
+  public FbDev(long controlAddress, long frameBufferAddress) {
     this.controlAddress = controlAddress;
     this.vmemAddress = frameBufferAddress;
 
@@ -65,14 +72,42 @@ public final class VGA {
       }
       switch ((int) address) {
         case 0 -> {
-          // width
           BYTES.putInt(data, 0, (screenWidth << 16) | screenHeight);
           return 4;
         }
         case 4 -> {
-          // height
           BYTES.putInt(data, 0, syncRequested);
           return 4;
+        }
+        default -> {
+          return -1;
+        }
+      }
+    }
+
+    @ExportMessage
+    public short read2(long address) {
+      switch ((int) address) {
+        case 0 -> {
+          return (short) screenHeight;
+        }
+        case 2 -> {
+          return (short) screenWidth;
+        }
+        default -> {
+          return -1;
+        }
+      }
+    }
+
+    @ExportMessage
+    public int read4(long address) {
+      switch ((int) address) {
+        case 0 -> {
+          return (screenWidth << 16) | screenHeight;
+        }
+        case 4 -> {
+          return syncRequested;
         }
         default -> {
           return -1;

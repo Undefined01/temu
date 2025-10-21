@@ -17,7 +17,6 @@ public class Rv64BytecodeRootNode extends RootNode {
 
   @Override
   public Object execute(VirtualFrame frame) {
-    var bci = (int) frame.getArguments()[0];
     return bytecodeNode.execute(frame);
   }
 

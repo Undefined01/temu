@@ -33,23 +33,23 @@ public abstract class RvIndirectCallNode extends Node {
   @Specialization(
       guards = {"getTargetPc(cpu) == cachedTargetPc"},
       limit = "2")
-  void doDirect(Rv64State cpu, long parentPc, @Cached("getTargetPc(cpu)") long cachedTargetPc, @Cached("getCallTarget(cpu)") CallTarget callTarget, @Cached("create(callTarget)") DirectCallNode directCallNode) {
+  void doDirect(Rv64State cpu, long parentPc, @Cached("getTargetPc(cpu)") long cachedTargetPc, @Cached("getCallTarget(cpu, cachedTargetPc)") CallTarget cachedCallTarget, @Cached("create(cachedCallTarget)") DirectCallNode directCallNode) {
     cpu.setReg(rd, returnPc); // ra
-    directCallNode.call((int)(cachedTargetPc & ~ExecPageCache.PAGE_ADDR_MASK), parentPc);
+    directCallNode.call(0, parentPc);
   }
 
   @Specialization(replaces = "doDirect")
   void doIndirect(Rv64State cpu, long parentPc, @Cached IndirectCallNode indirectCallNode) {
     cpu.setReg(rd, returnPc); // ra
-    var callTarget = getCallTarget(cpu);
-    indirectCallNode.call(callTarget, (int)(getTargetPc(cpu) & ~ExecPageCache.PAGE_ADDR_MASK), parentPc);
+    var callTarget = getCallTarget(cpu, getTargetPc(cpu));
+    indirectCallNode.call(callTarget, 0, parentPc);
   }
 
   long getTargetPc(Rv64State cpu) {
     return cpu.getReg(rs1) + imm;
   }
 
-  CallTarget getCallTarget(Rv64State cpu) {
-    return context.getExecPageCache().getByEntryPoint(getTargetPc(cpu), cpu).getCallTarget();
+  CallTarget getCallTarget(Rv64State cpu, long targetPc) {
+    return context.getExecPageCache().getByEntryPoint(targetPc, cpu).getCallTarget();
   }
 }

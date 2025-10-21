@@ -8,21 +8,21 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 import website.lihan.temu.device.Keyboard;
-import website.lihan.temu.device.VGA;
+import website.lihan.temu.device.FbDev;
 
 public class EmulatorGUI {
   private static boolean started = false;
 
   private Keyboard keyboard;
-  private VGA vga;
+  private FbDev fbdev;
   private Stage stage;
 
   public void connect(Keyboard keyboard) {
     this.keyboard = keyboard;
   }
 
-  public void connect(VGA vga) {
-    this.vga = vga;
+  public void connect(FbDev fbdev) {
+    this.fbdev = fbdev;
   }
 
   public void show() {
@@ -47,8 +47,8 @@ public class EmulatorGUI {
   private void createStage() {
     StackPane root = new StackPane();
 
-    if (vga != null) {
-      ImageView imageView = new ImageView(vga.getImage());
+    if (fbdev != null) {
+      ImageView imageView = new ImageView(fbdev.getImage());
       imageView.setPreserveRatio(true);
       imageView.setSmooth(false);
       imageView.setFitWidth(800);

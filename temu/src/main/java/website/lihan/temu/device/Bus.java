@@ -64,7 +64,7 @@ public final class Bus extends Node {
   @TruffleBoundary
   public static Bus withDefault() {
     var keyboard = new Keyboard();
-    var vga = new VGA();
+    var vga = new FbDev();
     var gui = new EmulatorGUI();
     gui.connect(keyboard);
     gui.connect(vga);

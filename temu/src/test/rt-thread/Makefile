@@ -1,19 +1,15 @@
 repo/README_zh.md:
-	# rt-thread 45a3dffbc7a9504a8110db4fda9deb63a8e65916
-	git clone --depth 1 https://github.com/NJU-ProjectN/rt-thread-am repo
+	# rt-thread 6603903ee8276648e262f50c6a30bf9e1dea27c8
+	git clone --depth 1 https://github.com/RT-Thread/rt-thread repo
 	cd repo && git am ../patches/*.patch
 
-abstract-machine:
-	$(MAKE) -C ../abstract-machine abstract-machine
-
-rt-thread: repo/README_zh.md abstract-machine
-	AM_HOME=$(shell pwd)/../abstract-machine/repo $(MAKE) -C repo/bsp/abstract-machine ARCH=riscv64-nemu LINUX_GNU_TOOLCHAIN=1
+rt-thread: repo/README_zh.md
+	nix-shell repo/bsp/qemu-virt64-riscv/shell.nix --command 'RTT_CC_PREFIX=riscv64-unknown-linux-musl- scons'
 
 clean:
-	find . -name build -exec rm -r {} \;
-	AM_HOME=$(shell pwd)/repo $(MAKE) -C repo/apps/coremark clean
+	nix-shell repo/bsp/qemu-virt64-riscv/shell.nix --command 'RTT_CC_PREFIX=riscv64-unknown-linux-musl- scons --clean'
 
 all: rt-thread
 .DEFAULT_GOAL = all
 
-.PHONY: all clean abstract-machine rt-thread
+.PHONY: all clean rt-thread

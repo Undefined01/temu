@@ -1,0 +1,276 @@
+From e1fd0a0c763b8a481f220f9a8b039591be8de281 Mon Sep 17 00:00:00 2001
+From: Undefined01 <amoscr@163.com>
+Date: Mon, 22 Sep 2025 23:05:08 +0800
+Subject: [PATCH] Port for TEMU
+
+---
+ bsp/abstract-machine/Makefile             |  2 +-
+ bsp/abstract-machine/integrate-am-apps.py | 32 ++++++++--------
+ bsp/abstract-machine/rtconfig.py          |  2 +-
+ bsp/abstract-machine/src/context.c        | 46 ++++++++++++++++++++---
+ bsp/abstract-machine/src/init.c           | 10 ++---
+ bsp/abstract-machine/src/interrupt.c      |  4 +-
+ bsp/abstract-machine/src/uart.c           |  2 +-
+ components/finsh/msh.c                    |  4 ++
+ 8 files changed, 70 insertions(+), 32 deletions(-)
+
+diff --git a/bsp/abstract-machine/Makefile b/bsp/abstract-machine/Makefile
+index 8d70f31..670456e 100644
+--- a/bsp/abstract-machine/Makefile
++++ b/bsp/abstract-machine/Makefile
+@@ -11,7 +11,7 @@ CFLAGS += -Wno-nonnull-compare
+ LDFLAGS += -T extra.ld
+ -include $(FILE_MK)
+ -include $(AM_APPS_MK)
+-include $(AM_HOME)/Makefile
++include $(AM_HOME)/Makefile.app
+ 
+ $(RTCONFIG_H):
+ 	touch $@
+diff --git a/bsp/abstract-machine/integrate-am-apps.py b/bsp/abstract-machine/integrate-am-apps.py
+index 8968df3..2292a2a 100644
+--- a/bsp/abstract-machine/integrate-am-apps.py
++++ b/bsp/abstract-machine/integrate-am-apps.py
+@@ -5,13 +5,12 @@ from pathlib import Path
+ 
+ # global settings
+ AM_HOME = Path(os.environ["AM_HOME"])
+-AM_KERNELS_HOME = (AM_HOME / ".." / "am-kernels").resolve()
++AM_KERNELS_HOME = (AM_HOME / "apps").resolve()
+ app_dir_list = [
+-  AM_KERNELS_HOME / "kernels" / "hello",
+-  AM_KERNELS_HOME / "benchmarks" / "microbench",
+-  AM_KERNELS_HOME / "kernels" / "typing-game",
+-  AM_KERNELS_HOME / "kernels" / "snake",
+-  AM_KERNELS_HOME / ".." / "fceux-am",
++  AM_KERNELS_HOME / "hello",
++  # AM_KERNELS_HOME / "microbench",
++  # AM_KERNELS_HOME / "typing",
++  # AM_KERNELS_HOME / "fceux",
+ ]
+ 
+ if len(sys.argv) != 3:
+@@ -35,16 +34,16 @@ lib_sym = [
+   "srand", "rand", "malloc", "free", "abs", "atoi",
+   "printf", "sprintf", "snprintf", "vsprintf", "vsnprintf",
+ ]
+-am_init_sym = [ "trm_init", "ioe_init", "cte_init", "vme_init", "mpe_init" ]
++am_init_sym = [ "_trm_init", "_ioe_init", "_cte_init", "_vme_init", "_mpe_init" ]
+ 
+-def read_lib_symbols(lib):
+-    libfile = AM_HOME / lib / "build" / f"{lib}-{ARCH}.a"
++def read_lib_symbols(lib, name):
++    libfile = AM_HOME / lib / "build" / f"{name}-{ARCH}.a"
+     if (not libfile.exists()):
+         os.system("make -j ARCH=" + ARCH + " -C " + str(AM_HOME / lib))
+-    cmd = f"{CROSS_COMPILE}nm -g --defined-only --format=just-symbols {str(libfile)}"
++    cmd = f"{CROSS_COMPILE}nm -g --defined-only {str(libfile)} | awk '{{print $3}}'"
+     res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+     global lib_sym
+-    lib_sym = list(set(lib_sym + res.stdout.strip().split('\n')))
++    lib_sym = list(set(lib_sym + res.stdout.strip().split('\n')) - set(['']))
+ 
+ def integrate(app_dir):
+     app_name = app_dir.name.replace("-", "_")
+@@ -76,14 +75,15 @@ static void am_{app_name}(int argc, char *argv[]) {{
+ MSH_CMD_EXPORT(am_{app_name}, AM {app_name});
+ """)
+ 
+-read_lib_symbols("am")
+-read_lib_symbols("klib")
++read_lib_symbols("am", "am")
++read_lib_symbols("libs/klib", "klib")
+ 
+ am_app_mk_fp.write("SRCS += build/am-apps.c\n")
+ am_app_c_fp.write("""#include <am.h>
+ #include <klib.h>
++#include <stdbool.h>
+ #include <rtthread.h>
+-extern Area am_apps_heap, am_apps_data, am_apps_bss;
++extern _Area am_apps_heap, am_apps_data, am_apps_bss;
+ extern uint8_t * am_apps_data_content;
+ static void am_app_start_thread(void *args) {
+   void (*fn)(const char *mainargs) = ((void **)args)[0];
+@@ -93,13 +93,13 @@ static void am_app_start_thread(void *args) {
+ static void am_app_start_wrapper(const char *app_name, void *app_main, int argc, char *argv[]) {
+   memcpy(am_apps_data.start, am_apps_data_content, am_apps_data.end - am_apps_data.start);
+   memset(am_apps_bss.start, 0, am_apps_bss.end - am_apps_bss.start);
+-  heap = am_apps_heap;
++  _heap = am_apps_heap;
+   void *args[2] = { app_main, (argc >= 2 ? argv[1] : "") };
+   rt_thread_t tid = rt_thread_create(app_name, am_app_start_thread, args, 0x4000, 0, 20);
+   rt_thread_startup(tid);
+ }
+ bool __dummy_ioe_init() { return true; }
+-bool __dummy_cte_init(Context *(*handler)(Event ev, Context *ctx)) { return true; }
++bool __dummy_cte_init(_Context *(*handler)(_Event ev, _Context *ctx)) { return true; }
+ bool __dummy_vme_init(void *(*pgalloc)(int), void (*pgfree)(void *)) { return true; }
+ bool __dummy_mpe_init(void (*entry)()) { return true; }
+ void __rt_am_halt(int code) {
+diff --git a/bsp/abstract-machine/rtconfig.py b/bsp/abstract-machine/rtconfig.py
+index db68dba..7d34e62 100644
+--- a/bsp/abstract-machine/rtconfig.py
++++ b/bsp/abstract-machine/rtconfig.py
+@@ -35,7 +35,7 @@ if PLATFORM == 'gcc':
+     OBJDUMP = PREFIX + 'objdump'
+     OBJCPY  = PREFIX + 'objcopy'
+ 
+-    DEVICE  = ' -mcmodel=medany -march=rv64imac -mabi=lp64 '
++    DEVICE  = ' -mcmodel=medany -march=rv64im -mabi=lp64 '
+     CFLAGS  = DEVICE + '-ffreestanding -flax-vector-conversions -Wno-cpp -fno-common -ffunction-sections -fdata-sections -fstrict-volatile-bitfields -fdiagnostics-color=always'
+     AFLAGS  = ' -c' + DEVICE + ' -x assembler-with-cpp -D__ASSEMBLY__ '
+     LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lgcc -static'
+diff --git a/bsp/abstract-machine/src/context.c b/bsp/abstract-machine/src/context.c
+index ee38829..e10f737 100644
+--- a/bsp/abstract-machine/src/context.c
++++ b/bsp/abstract-machine/src/context.c
+@@ -2,30 +2,64 @@
+ #include <klib.h>
+ #include <rtthread.h>
+ 
+-static Context* ev_handler(Event e, Context *c) {
++static _Context **switch_from = NULL;
++static _Context **switch_to = NULL;
++
++static _Context* ev_handler(_Event e, _Context *c) {
+   switch (e.event) {
++    case _EVENT_YIELD: {
++      if (switch_to) {
++        if (switch_from) {
++          *switch_from = c;
++        }
++        c = *switch_to;
++        switch_from = switch_to = NULL;
++      }
++      break;
++    }
+     default: printf("Unhandled event ID = %d\n", e.event); assert(0);
+   }
+   return c;
+ }
+ 
+ void __am_cte_init() {
+-  cte_init(ev_handler);
++  _cte_init(ev_handler);
+ }
+ 
+ void rt_hw_context_switch_to(rt_ubase_t to) {
+-  assert(0);
++  switch_to = (_Context **)to;
++  _yield();
+ }
+ 
+ void rt_hw_context_switch(rt_ubase_t from, rt_ubase_t to) {
+-  assert(0);
++  switch_from = (_Context **)from;
++  switch_to   = (_Context **)to;
++  _yield();
+ }
+ 
+ void rt_hw_context_switch_interrupt(void *context, rt_ubase_t from, rt_ubase_t to, struct rt_thread *to_thread) {
+   assert(0);
+ }
+ 
++void entry_wrapper(void **args) {
++  void (*tentry)(void *) = args[0];
++  void *param = args[1];
++  void (*texit)(void) = args[2];
++  tentry(param);
++  texit();
++}
++
+ rt_uint8_t *rt_hw_stack_init(void *tentry, void *parameter, rt_uint8_t *stack_addr, void *texit) {
+-  assert(0);
+-  return NULL;
++  rt_uint8_t         *stk;
++  stk  = stack_addr + sizeof(rt_uint32_t);
++  stk  = (rt_uint8_t *)RT_ALIGN_DOWN((rt_ubase_t)stk, 8);
++  stk -= sizeof(void *) * 3;
++
++  void **args = (void **)stk;
++  args[0] = tentry;
++  args[1] = parameter;
++  args[2] = texit;
++
++  _Context *context = _kcontext((_Area) { stk - RT_MAIN_THREAD_STACK_SIZE, stk }, (void (*)(void *))entry_wrapper, args);
++  return (rt_uint8_t *)context;
+ }
+diff --git a/bsp/abstract-machine/src/init.c b/bsp/abstract-machine/src/init.c
+index 93e2711..3fb99dc 100644
+--- a/bsp/abstract-machine/src/init.c
++++ b/bsp/abstract-machine/src/init.c
+@@ -4,10 +4,10 @@
+ #include <klib-macros.h>
+ 
+ #define AM_APPS_HEAP_SIZE  0x2000000
+-#define RT_HW_HEAP_BEGIN heap.start
+-#define RT_HW_HEAP_END heap.end
++#define RT_HW_HEAP_BEGIN _heap.start
++#define RT_HW_HEAP_END _heap.end
+ 
+-Area am_apps_heap = {}, am_apps_data = {}, am_apps_bss = {};
++_Area am_apps_heap = {}, am_apps_data = {}, am_apps_bss = {};
+ uint8_t * am_apps_data_content = NULL;
+ 
+ void rt_hw_board_init() {
+@@ -53,11 +53,11 @@ void rt_hw_board_init() {
+ }
+ 
+ int main() {
+-  ioe_init();
++  _ioe_init();
+ #ifdef __ISA_NATIVE__
+   // trigger the real initialization of IOE to
+   // perform SDL initialization int this main thread with large stack
+-  io_read(AM_TIMER_CONFIG);
++  // _io_read(AM_TIMER_CONFIG);
+ #endif
+   extern void __am_cte_init();
+   __am_cte_init();
+diff --git a/bsp/abstract-machine/src/interrupt.c b/bsp/abstract-machine/src/interrupt.c
+index 1652c5d..360bd62 100644
+--- a/bsp/abstract-machine/src/interrupt.c
++++ b/bsp/abstract-machine/src/interrupt.c
+@@ -2,9 +2,9 @@
+ #include <klib.h>
+ 
+ void rt_hw_interrupt_enable() {
+-  iset(1);
++  _intr_write(1);
+ }
+ 
+ void rt_hw_interrupt_disable() {
+-  iset(0);
++  _intr_write(0);
+ }
+diff --git a/bsp/abstract-machine/src/uart.c b/bsp/abstract-machine/src/uart.c
+index e4eb866..a51669f 100644
+--- a/bsp/abstract-machine/src/uart.c
++++ b/bsp/abstract-machine/src/uart.c
+@@ -32,7 +32,7 @@ static rt_err_t _uart_control(struct rt_serial_device *serial, int cmd, void *ar
+ }
+ 
+ static int _uart_putc(struct rt_serial_device *serial, char c) {
+-  putch(c);
++  _putc(c);
+   return 1;
+ }
+ 
+diff --git a/components/finsh/msh.c b/components/finsh/msh.c
+index a63e34d..0e6c33d 100644
+--- a/components/finsh/msh.c
++++ b/components/finsh/msh.c
+@@ -31,6 +31,10 @@
+ 
+ typedef int (*cmd_function_t)(int argc, char **argv);
+ 
++int __xstat(int ver, const char * path, struct stat * buf) {
++    return 0;
++}
++
+ int msh_help(int argc, char **argv)
+ {
+     rt_kprintf("RT-Thread shell commands:\n");
+-- 
+2.30.2
+

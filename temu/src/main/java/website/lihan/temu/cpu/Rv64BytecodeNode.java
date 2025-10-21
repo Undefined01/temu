@@ -101,19 +101,13 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   @ExplodeLoop(kind = ExplodeLoop.LoopExplosionKind.MERGE_EXPLODE)
   public Object executeFromBci(VirtualFrame frame, int startBci) {
     int bci = startBci;
-    try {
     while (true) {
       CompilerAsserts.partialEvaluationConstant(bci);
       int instr = BYTES.getInt(bc, bci);
       CompilerAsserts.partialEvaluationConstant(instr);
 
-      // cpu.pc = getPc(bci);
-      // Utils.printf("pc=%08x: %08x, sp=%08x\n", cpu.pc, instr, cpu.getReg(2));
+      // Utils.printf("pc=%08x: %08x, sp=%08x\n", baseAddr + bci, instr, cpu.getReg(2));
       int nextBci = bci + 4;
-
-      // if (cpu.isInterruptEnabled() && RTC.checkInterrupt()) {
-      //   throw InterruptException.create(cpu.pc, InterruptException.Cause.STIMER);
-      // }
 
       int opcode = instr & 0x7f;
       switch (opcode) {
@@ -188,7 +182,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         }
         case Opcodes.LOAD -> doLoad(cpu, bci, instr);
         case Opcodes.STORE -> doStore(cpu, bci, instr);
-        case Opcodes.SYSTEM -> SystemOp.execute(cpu, instr, nodes);
+        case Opcodes.SYSTEM -> SystemOp.execute(cpu, getPc(bci), instr, nodes);
         case Opcodes.FENCE -> {
           // No operation
         }
@@ -196,6 +190,9 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       }
 
       if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
+        if (cpu.isInterruptEnabled() && RTC.checkInterrupt()) {
+          throw InterruptException.create(getPc(bci), InterruptException.Cause.STIMER);
+        }
         if (BytecodeOSRNode.pollOSRBackEdge(this, 1)) { // OSR can be tried
           Object result = BytecodeOSRNode.tryOSR(this, nextBci, cpu, null, frame);
           if (result != null) { // OSR was performed
@@ -205,9 +202,6 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       }
       bci = nextBci;
     }
-  } finally {
-    cpu.pc = getPc(bci);
-  }
   }
 
   private long getPc(int bci) {

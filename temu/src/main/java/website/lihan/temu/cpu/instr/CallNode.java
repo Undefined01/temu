@@ -33,7 +33,7 @@ public class CallNode extends Node {
       this.directCallNode = DirectCallNode.create(target);
     }
     cpu.setReg(1, returnPc); // ra
-    directCallNode.call((int)(targetPc & ~ExecPageCache.PAGE_ADDR_MASK), returnPc);
+    directCallNode.call(0, returnPc);
   }
 
   public static boolean jalrIsReturn(VirtualFrame frame, long nextPc) {

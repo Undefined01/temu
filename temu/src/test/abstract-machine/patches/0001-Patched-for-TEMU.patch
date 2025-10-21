@@ -1,21 +1,39 @@
-From 9422eb104548e32d3840edcf2bc703e578721e46 Mon Sep 17 00:00:00 2001
+From 7fbad5e2d82efe1752711757766e93fe38cc9fb7 Mon Sep 17 00:00:00 2001
 From: Undefined01 <amoscr@163.com>
 Date: Sun, 21 Sep 2025 23:48:15 +0800
-Subject: [PATCH 1/3] Patched for TEMU
+Subject: [PATCH] Patched for TEMU
 
 ---
- am/arch/riscv64-nemu.mk            |  2 ++
- am/src/nemu/include/nemu.h         | 26 +++++++++++++-------------
- am/src/nemu/isa/riscv/boot/start.S |  7 -------
- am/src/nemu/isa/riscv/cte64.c      |  1 -
- am/src/nemu/isa/riscv/trm.c        |  4 ++--
- apps/fceux/src/config.h            | 16 ++++++++--------
- libs/klib/include/klib.h           |  4 ----
- libs/klib/src/atomic.c             | 30 ------------------------------
- libs/klib/src/stdlib.c             | 10 +++++-----
- 9 files changed, 30 insertions(+), 70 deletions(-)
- delete mode 100644 libs/klib/src/atomic.c
+ am/arch/isa/riscv32.mk               |  2 +-
+ am/arch/riscv64-nemu.mk              |  2 ++
+ am/src/nemu/common/timer.c           |  4 +--
+ am/src/nemu/include/nemu.h           | 26 +++++++++---------
+ am/src/nemu/isa/riscv/boot/loader.ld |  2 +-
+ am/src/nemu/isa/riscv/boot/start.S   |  6 ----
+ am/src/nemu/isa/riscv/cte.c          | 17 +++++++++---
+ am/src/nemu/isa/riscv/cte64.c        | 41 ++++++++++++++--------------
+ am/src/nemu/isa/riscv/trm.c          |  4 +--
+ am/src/nemu/isa/riscv/vme.c          |  4 +--
+ apps/fceux/src/config.h              | 16 +++++------
+ apps/yield-os/Makefile               |  3 ++
+ apps/yield-os/yield-os.c             | 31 +++++++++++++++++++++
+ libs/klib/include/klib.h             |  2 +-
+ libs/klib/src/atomic.c               | 41 +++++++++++++++++-----------
+ 15 files changed, 125 insertions(+), 76 deletions(-)
+ create mode 100644 apps/yield-os/Makefile
+ create mode 100644 apps/yield-os/yield-os.c
 
+diff --git a/am/arch/isa/riscv32.mk b/am/arch/isa/riscv32.mk
+index 65caffd0..1a67e992 100644
+--- a/am/arch/isa/riscv32.mk
++++ b/am/arch/isa/riscv32.mk
+@@ -1,5 +1,5 @@
+ CROSS_COMPILE := riscv64-linux-gnu-
+-COMMON_FLAGS  := -fno-pic -march=rv32g -mabi=ilp32
++COMMON_FLAGS  := -fno-pic -march=rv32im -mabi=ilp32
+ CFLAGS        += $(COMMON_FLAGS) -static
+ ASFLAGS       += $(COMMON_FLAGS) -O0
+ LDFLAGS       += -melf32lriscv
 diff --git a/am/arch/riscv64-nemu.mk b/am/arch/riscv64-nemu.mk
 index cfd1c6d5..3ffbcb7a 100644
 --- a/am/arch/riscv64-nemu.mk
@@ -26,6 +44,26 @@ index cfd1c6d5..3ffbcb7a 100644
  include $(AM_HOME)/am/arch/isa/riscv64.mk
  include $(AM_HOME)/am/arch/platform/nemu.mk
  
+diff --git a/am/src/nemu/common/timer.c b/am/src/nemu/common/timer.c
+index f291bcc9..ef92972d 100644
+--- a/am/src/nemu/common/timer.c
++++ b/am/src/nemu/common/timer.c
+@@ -9,7 +9,7 @@ size_t __am_timer_read(uintptr_t reg, void *buf, size_t size) {
+     case _DEVREG_TIMER_UPTIME: {
+       _DEV_TIMER_UPTIME_t *uptime = (_DEV_TIMER_UPTIME_t *)buf;
+       uptime->hi = 0;
+-      uptime->lo = inl(RTC_ADDR) - boot_time;
++      uptime->lo = inl(RTC_ADDR)/1000 - boot_time;
+       return sizeof(_DEV_TIMER_UPTIME_t);
+     }
+     case _DEVREG_TIMER_DATE: {
+@@ -27,5 +27,5 @@ size_t __am_timer_read(uintptr_t reg, void *buf, size_t size) {
+ }
+ 
+ void __am_timer_init() {
+-  boot_time = inl(RTC_ADDR);
++  boot_time = inl(RTC_ADDR)/1000;
+ }
 diff --git a/am/src/nemu/include/nemu.h b/am/src/nemu/include/nemu.h
 index 853a779c..a7f0862f 100644
 --- a/am/src/nemu/include/nemu.h
@@ -63,11 +101,24 @@ index 853a779c..a7f0862f 100644
  #endif
  
  extern char _pmem_start, _pmem_end;
+diff --git a/am/src/nemu/isa/riscv/boot/loader.ld b/am/src/nemu/isa/riscv/boot/loader.ld
+index 97694184..05cf7af7 100644
+--- a/am/src/nemu/isa/riscv/boot/loader.ld
++++ b/am/src/nemu/isa/riscv/boot/loader.ld
+@@ -1,7 +1,7 @@
+ pmem_base = 0x80000000;
+ 
+ MEMORY {
+-  ram (rwxa) : ORIGIN = 0x80100000, LENGTH = 1024M
++  ram (rwxa) : ORIGIN = 0x80000000, LENGTH = 1024M
+ }
+ 
+ INCLUDE "section.ld"
 diff --git a/am/src/nemu/isa/riscv/boot/start.S b/am/src/nemu/isa/riscv/boot/start.S
-index 482e1f60..291031ca 100644
+index 482e1f60..a4739f2b 100644
 --- a/am/src/nemu/isa/riscv/boot/start.S
 +++ b/am/src/nemu/isa/riscv/boot/start.S
-@@ -32,16 +32,9 @@
+@@ -32,12 +32,6 @@
  _start:
    init_regs
  
@@ -80,14 +131,70 @@ index 482e1f60..291031ca 100644
    la t0, _stack_top
    la t1, _stack_pointer
    sub t3, t1, t0
--  csrr t4, mhartid
-   mul t5, t3, t4
-   add sp, t5, t1
+diff --git a/am/src/nemu/isa/riscv/cte.c b/am/src/nemu/isa/riscv/cte.c
+index b660feff..5f4afbeb 100644
+--- a/am/src/nemu/isa/riscv/cte.c
++++ b/am/src/nemu/isa/riscv/cte.c
+@@ -102,6 +102,7 @@ _Context* __am_irq_SECALL_handler(_Event *ev, _Context *c) {
+   return c;
+ }
  
++static _Context* (*global_irq_handler)(_Event ev, _Context *c) = NULL;
+ 
+ _Context* __am_irq_handle(_Context *c) {
+   __am_get_cur_as(c);
+@@ -119,11 +120,15 @@ _Context* __am_irq_handle(_Context *c) {
+     exception_handler[scause_code](&ev, c);
+   }
+ 
++  if (global_irq_handler != NULL) {
++    c = global_irq_handler(ev, c);
++  }
++
+   __am_switch(c);
+ 
+-#if __riscv_xlen == 64
+-  asm volatile("fence.i");
+-#endif
++// #if __riscv_xlen == 64
++//   asm volatile("fence.i");
++// #endif
+ 
+   return c;
+ }
+@@ -211,6 +216,8 @@ int _cte_init(_Context *(*handler)(_Event ev, _Context *ctx)) {
+ 
+   asm volatile("csrw sscratch, zero");
+ 
++  global_irq_handler = handler;
++
+   // cte init handler has no effect for now
+ 
+ #if __riscv_xlen == 64
+@@ -254,7 +261,9 @@ void _yield() {
+ }
+ 
+ int _intr_read() {
+-  return 0;
++  long sstatus;
++  asm volatile("csrr %0, sstatus" : "=r"(sstatus));
++  return (sstatus & 0x2) != 0;
+ }
+ 
+ void _intr_write(int enable) {
 diff --git a/am/src/nemu/isa/riscv/cte64.c b/am/src/nemu/isa/riscv/cte64.c
-index 6c0350e0..737341c7 100644
+index 6c0350e0..4c713f4f 100644
 --- a/am/src/nemu/isa/riscv/cte64.c
 +++ b/am/src/nemu/isa/riscv/cte64.c
+@@ -5,7 +5,7 @@ extern void __am_timervec(void);
+ 
+ static void init_machine_exception() {
+   // set M-mode exception entry
+-  asm volatile("csrw mtvec, %0" : : "r"(__am_timervec));
++  asm volatile("csrw stvec, %0" : : "r"(__am_timervec));
+ }
+ 
+ int g_config_disable_timer = 0; // dirty hack of __am_init_cte64(), to be refactored
 @@ -14,7 +14,6 @@ extern void enable_timer();
  extern void init_pmp(); 
  extern void enable_pmp(uintptr_t pmp_reg, uintptr_t pmp_addr, uintptr_t pmp_size, uint8_t lock, uint8_t permission);
@@ -96,6 +203,62 @@ index 6c0350e0..737341c7 100644
  
  static void init_eip() {
    // enable machine external interrupt (mie.meip and mstatus.mie)
+@@ -24,14 +23,14 @@ static void init_eip() {
+ 
+ void __am_init_cte64() {
+   // set delegation (do not deleg illegal instruction exception)
+-  asm volatile("csrw mideleg, %0" : : "r"(0xffff));
+-  asm volatile("csrw medeleg, %0" : : "r"(0xfffb));
++  // asm volatile("csrw mideleg, %0" : : "r"(0xffff));
++  // asm volatile("csrw medeleg, %0" : : "r"(0xfffb));
+ 
+   // set PMP to access all memory in S-mode
+   // asm volatile("csrw pmpaddr8, %0" : : "r"(-1));
+   // asm volatile("csrw pmpcfg2, %0" : : "r"(31));
+   
+-  init_pmp();
++  // init_pmp();
+ #if defined(__ARCH_RISCV64_NOOP) || defined(__ARCH_RISCV32_NOOP) || defined(__ARCH_RISCV64_XS)
+   // protect 0x90000000 + 0x10000 for test purpose
+   printf("enable_pmp\n");
+@@ -54,20 +53,22 @@ void __am_init_cte64() {
+   // invalid arch
+ #endif
+ 
+-  init_machine_exception();
+-  init_timer();
+-  if(!g_config_disable_timer){
+-    enable_timer();
+-  }
+-  init_eip();
++  // init_machine_exception();
++  (void)init_machine_exception;
++  // init_timer();
++  // if(!g_config_disable_timer){
++  //   enable_timer();
++  // }
++  // init_eip();
++  (void)init_eip;
+ 
+-  // enter S-mode
+-  uintptr_t status = MSTATUS_SPP(MODE_S);
+-  extern char _here;
+-  asm volatile(
+-    "csrw sstatus, %0;"
+-    "csrw sepc, %1;"
+-    "sret;"
+-    "_here:"
+-    : : "r"(status), "r"(&_here));
++  // // enter S-mode
++  // uintptr_t status = MSTATUS_SPP(MODE_S);
++  // extern char _here;
++  // asm volatile(
++  //   "csrw sstatus, %0;"
++  //   "csrw sepc, %1;"
++  //   "sret;"
++  //   "_here:"
++  //   : : "r"(status), "r"(&_here));
+ }
 diff --git a/am/src/nemu/isa/riscv/trm.c b/am/src/nemu/isa/riscv/trm.c
 index 53dbd326..2f5b6215 100644
 --- a/am/src/nemu/isa/riscv/trm.c
@@ -114,6 +277,28 @@ index 53dbd326..2f5b6215 100644
  
    // should not reach here
    while (1);
+diff --git a/am/src/nemu/isa/riscv/vme.c b/am/src/nemu/isa/riscv/vme.c
+index fe51a6ee..5b1dbb00 100644
+--- a/am/src/nemu/isa/riscv/vme.c
++++ b/am/src/nemu/isa/riscv/vme.c
+@@ -186,7 +186,7 @@ void _map_fault(_AddressSpace *as, void *va, void *pa, int prot) {
+   for (int i = 0; i < 20; i++){
+     max *= 2;
+   }
+-  uintptr_t randnum = rand() % (max - 1);
++  // uintptr_t randnum = rand() % (max - 1);
+ 
+   for (level = PTW_CONFIG.ptw_level - 1; ; level --) {
+     pte = &pg_base[VPNi(PTW_CONFIG, (uintptr_t)va, level)];
+@@ -199,7 +199,7 @@ void _map_fault(_AddressSpace *as, void *va, void *pa, int prot) {
+   }
+ 
+   if (!(*pte & PTE_V)) {
+-    *pte = PTE_V | prot | (PN(pa) << 10) | (randnum << 34);
++    // *pte = PTE_V | prot | (PN(pa) << 10) | (randnum << 34);
+   }
+ }
+ 
 diff --git a/apps/fceux/src/config.h b/apps/fceux/src/config.h
 index 7089ecc5..e4bb560c 100644
 --- a/apps/fceux/src/config.h
@@ -142,32 +327,89 @@ index 7089ecc5..e4bb560c 100644
 +// #endif
  
  #endif
+diff --git a/apps/yield-os/Makefile b/apps/yield-os/Makefile
+new file mode 100644
+index 00000000..dbb6cdf8
+--- /dev/null
++++ b/apps/yield-os/Makefile
+@@ -0,0 +1,3 @@
++NAME = yield-os
++SRCS = yield-os.c
++include $(AM_HOME)/Makefile.app
+diff --git a/apps/yield-os/yield-os.c b/apps/yield-os/yield-os.c
+new file mode 100644
+index 00000000..87acd8be
+--- /dev/null
++++ b/apps/yield-os/yield-os.c
+@@ -0,0 +1,31 @@
++#include <am.h>
++#include <klib-macros.h>
++
++#define STACK_SIZE (4096 * 8)
++typedef union {
++  uint8_t stack[STACK_SIZE];
++  struct { _Context *cp; };
++} PCB;
++static PCB pcb[2], pcb_boot, *current = &pcb_boot;
++
++static void f(void *arg) {
++  while (1) {
++    _putc("?AB"[(uintptr_t)arg > 2 ? 0 : (uintptr_t)arg]);
++    for (int volatile i = 0; i < 100000; i++) ;
++    _yield();
++  }
++}
++
++static _Context *schedule(_Event ev, _Context *prev) {
++  current->cp = prev;
++  current = (current == &pcb[0] ? &pcb[1] : &pcb[0]);
++  return current->cp;
++}
++
++int main() {
++  _cte_init(schedule);
++  pcb[0].cp = _kcontext((_Area) { pcb[0].stack, &pcb[0] + 1 }, f, (void *)1L);
++  pcb[1].cp = _kcontext((_Area) { pcb[1].stack, &pcb[1] + 1 }, f, (void *)2L);
++  _yield();
++  panic("Should not reach here!");
++}
 diff --git a/libs/klib/include/klib.h b/libs/klib/include/klib.h
-index 361c2eab..d0cb0a6e 100644
+index 361c2eab..19129a42 100644
 --- a/libs/klib/include/klib.h
 +++ b/libs/klib/include/klib.h
-@@ -78,10 +78,6 @@ void free(void *ptr);
- 
- void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *));
- 
--uint64_t compare_and_swap(volatile uint64_t*, uint64_t, uint64_t);
--void lock(volatile uint64_t *);
--void release(volatile uint64_t *);
--
- // assert.h
- #ifdef NDEBUG
-   #define assert(ignore) ((void)0)
+@@ -62,7 +62,7 @@ char *strrchr(const char *s, int c);
+ // stdlib.h
+ int atoi(const char* nptr);
+ int abs(int x);
+-unsigned long time();
++long time();
+ void srand(unsigned int seed);
+ int rand();
+ void *malloc(size_t size);
 diff --git a/libs/klib/src/atomic.c b/libs/klib/src/atomic.c
-deleted file mode 100644
-index d98ef7da..00000000
+index d98ef7da..1fb1aff8 100644
 --- a/libs/klib/src/atomic.c
-+++ /dev/null
-@@ -1,30 +0,0 @@
--#include "klib.h"
--#include <klib-macros.h>
--
--uint64_t compare_and_swap(volatile uint64_t* addr, uint64_t old_val, uint64_t new_val) {
--  uint64_t check = 0;
++++ b/libs/klib/src/atomic.c
+@@ -2,29 +2,38 @@
+ #include <klib-macros.h>
+ 
+ uint64_t compare_and_swap(volatile uint64_t* addr, uint64_t old_val, uint64_t new_val) {
++  // uint64_t check = 0;
++  // uint64_t value = 0;
++  // asm volatile (
++  //   "lr.d %[value], (%[addr]);"
++  //   : [value]"=r"(value)
++  //   : [addr]"p"(addr)
++  // );
++  // if (value != old_val) return 1;
++  // asm volatile (
++  //   "sc.d %[check], %[write], (%[addr]);"
++  //   : [check]"=r"(check)
++  //   : [write]"r"(new_val), [addr]"p"(addr)
++  // );
++  // return check;
++  
+   uint64_t check = 0;
 -  uint64_t value = 0;
 -  asm volatile (
 -    "lr.d %[value], (%[addr]);"
@@ -180,57 +422,30 @@ index d98ef7da..00000000
 -    : [check]"=r"(check)
 -    : [write]"r"(new_val), [addr]"p"(addr)
 -  );
--  return check;
--}
--
--void lock(volatile uint64_t *addr) {
++  if (*addr == old_val) {
++    check = 1;
++    *addr = new_val;
++  } else {
++    check = 0;
++  }
+   return check;
+ }
+ 
+ void lock(volatile uint64_t *addr) {
 -  asm volatile("csrci mstatus, 0x8");
 -  while(compare_and_swap(addr, 0, 1));
--}
--
--void release(volatile uint64_t *addr) {
--  *addr = 0;
++  int intr = _intr_read();
++  while(compare_and_swap(addr, 0, intr | 0x2));
+ }
+ 
+ void release(volatile uint64_t *addr) {
++  int intr = *addr & 0x1;
+   *addr = 0;
 -  asm volatile("fence");
 -  asm volatile("csrsi mstatus, 0x8");
--}
++  _intr_write(intr);
+ }
 \ No newline at end of file
-diff --git a/libs/klib/src/stdlib.c b/libs/klib/src/stdlib.c
-index 18966846..0134a44b 100644
---- a/libs/klib/src/stdlib.c
-+++ b/libs/klib/src/stdlib.c
-@@ -36,7 +36,7 @@ static struct {
- volatile uint64_t malloc_lock = 0;
- 
- void *malloc(size_t size) {
--  lock(&malloc_lock);
-+  // lock(&malloc_lock);
-   if (last.ptr == NULL) {
-     last.ptr = _heap.start;
-     printf("heap start = %x\n", last.ptr);
-@@ -48,19 +48,19 @@ void *malloc(size_t size) {
-   // skip the region allocated by the last call
-   last.ptr += last.size;
-   if (last.ptr + size >= _heap.end) {
--    release(&malloc_lock);
-+    // release(&malloc_lock);
-     return NULL;
-   }
-   void *ret = last.ptr;
-   last.size = size;
--  release(&malloc_lock);
-+  // release(&malloc_lock);
-   return ret;
- }
- 
- void free(void *ptr) {
--  lock(&malloc_lock);
-+  // lock(&malloc_lock);
-   if (ptr == last.ptr) last.size = 0;
--  release(&malloc_lock);
-+  // release(&malloc_lock);
- }
- 
- #endif
 -- 
 2.30.2
 

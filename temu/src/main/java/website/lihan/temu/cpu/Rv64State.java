@@ -13,7 +13,7 @@ public final class Rv64State {
 
   private final CsrFile csrs = new CsrFile();
 
-  public long pc = 0x80000000L;
+  // public long pc = 0x80000000L;
   @CompilationFinal
   private int privilegeLevel = 1;
 

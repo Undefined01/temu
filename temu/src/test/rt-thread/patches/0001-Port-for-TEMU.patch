@@ -1,276 +1,1174 @@
-From e1fd0a0c763b8a481f220f9a8b039591be8de281 Mon Sep 17 00:00:00 2001
+From 1eb97f814e8c87a36bdace689a098ff2ba91af54 Mon Sep 17 00:00:00 2001
 From: Undefined01 <amoscr@163.com>
-Date: Mon, 22 Sep 2025 23:05:08 +0800
+Date: Tue, 21 Oct 2025 21:03:59 +0800
 Subject: [PATCH] Port for TEMU
 
 ---
- bsp/abstract-machine/Makefile             |  2 +-
- bsp/abstract-machine/integrate-am-apps.py | 32 ++++++++--------
- bsp/abstract-machine/rtconfig.py          |  2 +-
- bsp/abstract-machine/src/context.c        | 46 ++++++++++++++++++++---
- bsp/abstract-machine/src/init.c           | 10 ++---
- bsp/abstract-machine/src/interrupt.c      |  4 +-
- bsp/abstract-machine/src/uart.c           |  2 +-
- components/finsh/msh.c                    |  4 ++
- 8 files changed, 70 insertions(+), 32 deletions(-)
+ bsp/qemu-virt64-riscv/.config                 | 143 ++-------
+ bsp/qemu-virt64-riscv/Kconfig                 |   4 +-
+ .../applications/thead-sample.c               |  85 +++++
+ bsp/qemu-virt64-riscv/driver/board.c          |   2 +-
+ bsp/qemu-virt64-riscv/driver/drv_uart.c       | 294 ++++++++++++++----
+ bsp/qemu-virt64-riscv/link.lds                |   4 +-
+ bsp/qemu-virt64-riscv/rtconfig.h              |  99 +-----
+ bsp/qemu-virt64-riscv/rtconfig.py             |   7 +-
+ bsp/qemu-virt64-riscv/shell.nix               |  32 ++
+ .../dfs/dfs_v2/filesystems/devfs/devfs.c      |   1 +
+ components/finsh/shell.c                      |   5 +-
+ .../libc/compilers/common/include/sys/time.h  |   1 +
+ components/libc/compilers/musl/SConscript     |   3 +-
+ components/mm/SConscript                      |   4 +-
+ libcpu/risc-v/common64/SConscript             |   2 +
+ libcpu/risc-v/common64/backtrace.c            |   6 +
+ libcpu/risc-v/common64/mmu.h                  |   2 +
+ libcpu/risc-v/common64/sbi.c                  |  16 +-
+ libcpu/risc-v/common64/startup_gcc.S          |   2 +-
+ libcpu/risc-v/common64/trap.c                 |   3 +
+ 20 files changed, 414 insertions(+), 301 deletions(-)
+ create mode 100644 bsp/qemu-virt64-riscv/applications/thead-sample.c
+ create mode 100644 bsp/qemu-virt64-riscv/shell.nix
 
-diff --git a/bsp/abstract-machine/Makefile b/bsp/abstract-machine/Makefile
-index 8d70f31..670456e 100644
---- a/bsp/abstract-machine/Makefile
-+++ b/bsp/abstract-machine/Makefile
-@@ -11,7 +11,7 @@ CFLAGS += -Wno-nonnull-compare
- LDFLAGS += -T extra.ld
- -include $(FILE_MK)
- -include $(AM_APPS_MK)
--include $(AM_HOME)/Makefile
-+include $(AM_HOME)/Makefile.app
+diff --git a/bsp/qemu-virt64-riscv/.config b/bsp/qemu-virt64-riscv/.config
+index cc9158f1..3eecc9b6 100644
+--- a/bsp/qemu-virt64-riscv/.config
++++ b/bsp/qemu-virt64-riscv/.config
+@@ -128,7 +128,7 @@ CONFIG_RT_ALIGN_SIZE=8
+ CONFIG_RT_THREAD_PRIORITY_32=y
+ # CONFIG_RT_THREAD_PRIORITY_256 is not set
+ CONFIG_RT_THREAD_PRIORITY_MAX=32
+-CONFIG_RT_TICK_PER_SECOND=100
++CONFIG_RT_TICK_PER_SECOND=10
+ CONFIG_RT_USING_OVERFLOW_CHECK=y
+ CONFIG_RT_USING_HOOK=y
+ CONFIG_RT_HOOK_USING_FUNC_PTR=y
+@@ -192,19 +192,16 @@ CONFIG_RT_USING_CONSOLE=y
+ CONFIG_RT_CONSOLEBUF_SIZE=256
+ CONFIG_RT_CONSOLE_DEVICE_NAME="uart0"
+ CONFIG_RT_VER_NUM=0x50201
+-CONFIG_RT_USING_STDC_ATOMIC=y
++# CONFIG_RT_USING_STDC_ATOMIC is not set
+ CONFIG_RT_BACKTRACE_LEVEL_MAX_NR=32
+ # end of RT-Thread Kernel
  
- $(RTCONFIG_H):
- 	touch $@
-diff --git a/bsp/abstract-machine/integrate-am-apps.py b/bsp/abstract-machine/integrate-am-apps.py
-index 8968df3..2292a2a 100644
---- a/bsp/abstract-machine/integrate-am-apps.py
-+++ b/bsp/abstract-machine/integrate-am-apps.py
-@@ -5,13 +5,12 @@ from pathlib import Path
+ CONFIG_ARCH_CPU_64BIT=y
+ CONFIG_RT_USING_CACHE=y
+-CONFIG_ARCH_MM_MMU=y
+ CONFIG_ARCH_RISCV=y
+-CONFIG_ARCH_RISCV_FPU=y
+ CONFIG_ARCH_RISCV64=y
+ CONFIG_ARCH_USING_NEW_CTX_SWITCH=y
+ CONFIG_ARCH_USING_RISCV_COMMON64=y
+-CONFIG_ARCH_REMAP_KERNEL=y
  
- # global settings
- AM_HOME = Path(os.environ["AM_HOME"])
--AM_KERNELS_HOME = (AM_HOME / ".." / "am-kernels").resolve()
-+AM_KERNELS_HOME = (AM_HOME / "apps").resolve()
- app_dir_list = [
--  AM_KERNELS_HOME / "kernels" / "hello",
--  AM_KERNELS_HOME / "benchmarks" / "microbench",
--  AM_KERNELS_HOME / "kernels" / "typing-game",
--  AM_KERNELS_HOME / "kernels" / "snake",
--  AM_KERNELS_HOME / ".." / "fceux-am",
-+  AM_KERNELS_HOME / "hello",
-+  # AM_KERNELS_HOME / "microbench",
-+  # AM_KERNELS_HOME / "typing",
-+  # AM_KERNELS_HOME / "fceux",
- ]
+ #
+ # RT-Thread Components
+@@ -223,6 +220,7 @@ CONFIG_FINSH_THREAD_STACK_SIZE=16384
+ CONFIG_FINSH_USING_HISTORY=y
+ CONFIG_FINSH_HISTORY_LINES=10
+ # CONFIG_FINSH_USING_WORD_OPERATION is not set
++CONFIG_FINSH_USING_FUNC_EXT=y
+ CONFIG_FINSH_USING_SYMTAB=y
+ CONFIG_FINSH_CMD_SIZE=80
+ CONFIG_MSH_USING_BUILT_IN_COMMANDS=y
+@@ -323,15 +321,8 @@ CONFIG_RT_USING_SOFT_RTC=y
+ # CONFIG_RT_USING_HWCRYPTO is not set
+ # CONFIG_RT_USING_WIFI is not set
+ # CONFIG_RT_USING_BLK is not set
+-CONFIG_RT_USING_VIRTIO=y
+-CONFIG_RT_USING_VIRTIO10=y
++# CONFIG_RT_USING_VIRTIO is not set
+ # CONFIG_RT_USING_VIRTIO_MMIO_ALIGN is not set
+-CONFIG_RT_USING_VIRTIO_BLK=y
+-CONFIG_RT_USING_VIRTIO_NET=y
+-CONFIG_RT_USING_VIRTIO_CONSOLE=y
+-CONFIG_RT_USING_VIRTIO_CONSOLE_PORT_MAX_NR=4
+-CONFIG_RT_USING_VIRTIO_GPU=y
+-CONFIG_RT_USING_VIRTIO_INPUT=y
+ CONFIG_RT_USING_PIN=y
+ CONFIG_RT_USING_KTIME=y
+ # CONFIG_RT_USING_HWTIMER is not set
+@@ -362,14 +353,14 @@ CONFIG_RT_LIBC_TZ_DEFAULT_SEC=0
+ #
+ CONFIG_RT_USING_POSIX_FS=y
+ CONFIG_RT_USING_POSIX_DEVIO=y
+-CONFIG_RT_USING_POSIX_STDIO=y
++# CONFIG_RT_USING_POSIX_STDIO is not set
+ CONFIG_RT_USING_POSIX_POLL=y
+-CONFIG_RT_USING_POSIX_SELECT=y
++# CONFIG_RT_USING_POSIX_SELECT is not set
+ # CONFIG_RT_USING_POSIX_EVENTFD is not set
+ # CONFIG_RT_USING_POSIX_TIMERFD is not set
+ # CONFIG_RT_USING_POSIX_SOCKET is not set
+-CONFIG_RT_USING_POSIX_TERMIOS=y
+-CONFIG_RT_USING_POSIX_AIO=y
++# CONFIG_RT_USING_POSIX_TERMIOS is not set
++# CONFIG_RT_USING_POSIX_AIO is not set
+ # CONFIG_RT_USING_POSIX_MMAN is not set
+ CONFIG_RT_USING_POSIX_DELAY=y
+ CONFIG_RT_USING_POSIX_CLOCK=y
+@@ -397,89 +388,9 @@ CONFIG_RT_USING_POSIX_PIPE_SIZE=512
+ #
+ # Network
+ #
+-CONFIG_RT_USING_SAL=y
+-CONFIG_SAL_INTERNET_CHECK=y
+-
+-#
+-# Docking with protocol stacks
+-#
+-CONFIG_SAL_USING_LWIP=y
+-# CONFIG_SAL_USING_AT is not set
+-# CONFIG_SAL_USING_TLS is not set
+-# end of Docking with protocol stacks
+-
+-CONFIG_SAL_USING_POSIX=y
+-CONFIG_RT_USING_NETDEV=y
+-CONFIG_NETDEV_USING_IFCONFIG=y
+-CONFIG_NETDEV_USING_PING=y
+-CONFIG_NETDEV_USING_NETSTAT=y
+-CONFIG_NETDEV_USING_AUTO_DEFAULT=y
+-# CONFIG_NETDEV_USING_LINK_STATUS_CALLBACK is not set
+-# CONFIG_NETDEV_USING_IPV6 is not set
+-CONFIG_NETDEV_IPV4=1
+-CONFIG_NETDEV_IPV6=0
+-CONFIG_RT_USING_LWIP=y
+-# CONFIG_RT_USING_LWIP_LOCAL_VERSION is not set
+-# CONFIG_RT_USING_LWIP141 is not set
+-CONFIG_RT_USING_LWIP203=y
+-# CONFIG_RT_USING_LWIP212 is not set
+-# CONFIG_RT_USING_LWIP_LATEST is not set
+-CONFIG_RT_USING_LWIP_VER_NUM=0x20003
+-# CONFIG_RT_USING_LWIP_IPV6 is not set
+-CONFIG_RT_LWIP_MEM_ALIGNMENT=4
+-CONFIG_RT_LWIP_IGMP=y
+-CONFIG_RT_LWIP_ICMP=y
+-# CONFIG_RT_LWIP_SNMP is not set
+-CONFIG_RT_LWIP_DNS=y
+-CONFIG_RT_LWIP_DHCP=y
+-CONFIG_IP_SOF_BROADCAST=1
+-CONFIG_IP_SOF_BROADCAST_RECV=1
+-
+-#
+-# Static IPv4 Address
+-#
+-CONFIG_RT_LWIP_IPADDR="192.168.1.30"
+-CONFIG_RT_LWIP_GWADDR="192.168.1.1"
+-CONFIG_RT_LWIP_MSKADDR="255.255.255.0"
+-# end of Static IPv4 Address
+-
+-CONFIG_RT_LWIP_UDP=y
+-CONFIG_RT_LWIP_TCP=y
+-CONFIG_RT_LWIP_RAW=y
+-# CONFIG_RT_LWIP_PPP is not set
+-CONFIG_RT_MEMP_NUM_NETCONN=8
+-CONFIG_RT_LWIP_PBUF_NUM=16
+-CONFIG_RT_LWIP_RAW_PCB_NUM=4
+-CONFIG_RT_LWIP_UDP_PCB_NUM=4
+-CONFIG_RT_LWIP_TCP_PCB_NUM=4
+-CONFIG_RT_LWIP_TCP_SEG_NUM=40
+-CONFIG_RT_LWIP_TCP_SND_BUF=8196
+-CONFIG_RT_LWIP_TCP_WND=8196
+-CONFIG_RT_LWIP_TCPTHREAD_PRIORITY=10
+-CONFIG_RT_LWIP_TCPTHREAD_MBOX_SIZE=8
+-CONFIG_RT_LWIP_TCPTHREAD_STACKSIZE=8192
+-# CONFIG_LWIP_NO_RX_THREAD is not set
+-# CONFIG_LWIP_NO_TX_THREAD is not set
+-CONFIG_RT_LWIP_ETHTHREAD_PRIORITY=12
+-CONFIG_RT_LWIP_ETHTHREAD_STACKSIZE=8192
+-CONFIG_RT_LWIP_ETHTHREAD_MBOX_SIZE=8
+-# CONFIG_RT_LWIP_REASSEMBLY_FRAG is not set
+-CONFIG_LWIP_NETIF_STATUS_CALLBACK=1
+-CONFIG_LWIP_NETIF_LINK_CALLBACK=1
+-CONFIG_RT_LWIP_NETIF_NAMESIZE=6
+-CONFIG_SO_REUSE=1
+-CONFIG_LWIP_SO_RCVTIMEO=1
+-CONFIG_LWIP_SO_SNDTIMEO=1
+-CONFIG_LWIP_SO_RCVBUF=1
+-CONFIG_LWIP_SO_LINGER=0
+-# CONFIG_RT_LWIP_NETIF_LOOPBACK is not set
+-CONFIG_LWIP_NETIF_LOOPBACK=0
+-# CONFIG_RT_LWIP_STATS is not set
+-# CONFIG_RT_LWIP_USING_HW_CHECKSUM is not set
+-CONFIG_RT_LWIP_USING_PING=y
+-# CONFIG_LWIP_USING_DHCPD is not set
+-# CONFIG_RT_LWIP_ENABLE_USER_HOOKS is not set
+-# CONFIG_RT_LWIP_DEBUG is not set
++# CONFIG_RT_USING_SAL is not set
++# CONFIG_RT_USING_NETDEV is not set
++# CONFIG_RT_USING_LWIP is not set
+ # CONFIG_RT_USING_AT is not set
+ # end of Network
  
- if len(sys.argv) != 3:
-@@ -35,16 +34,16 @@ lib_sym = [
-   "srand", "rand", "malloc", "free", "abs", "atoi",
-   "printf", "sprintf", "snprintf", "vsprintf", "vsnprintf",
- ]
--am_init_sym = [ "trm_init", "ioe_init", "cte_init", "vme_init", "mpe_init" ]
-+am_init_sym = [ "_trm_init", "_ioe_init", "_cte_init", "_vme_init", "_mpe_init" ]
+@@ -508,22 +419,6 @@ CONFIG_RT_USING_ADT_REF=y
  
--def read_lib_symbols(lib):
--    libfile = AM_HOME / lib / "build" / f"{lib}-{ARCH}.a"
-+def read_lib_symbols(lib, name):
-+    libfile = AM_HOME / lib / "build" / f"{name}-{ARCH}.a"
-     if (not libfile.exists()):
-         os.system("make -j ARCH=" + ARCH + " -C " + str(AM_HOME / lib))
--    cmd = f"{CROSS_COMPILE}nm -g --defined-only --format=just-symbols {str(libfile)}"
-+    cmd = f"{CROSS_COMPILE}nm -g --defined-only {str(libfile)} | awk '{{print $3}}'"
-     res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-     global lib_sym
--    lib_sym = list(set(lib_sym + res.stdout.strip().split('\n')))
-+    lib_sym = list(set(lib_sym + res.stdout.strip().split('\n')) - set(['']))
+ # CONFIG_RT_USING_VBUS is not set
  
- def integrate(app_dir):
-     app_name = app_dir.name.replace("-", "_")
-@@ -76,14 +75,15 @@ static void am_{app_name}(int argc, char *argv[]) {{
- MSH_CMD_EXPORT(am_{app_name}, AM {app_name});
- """)
+-#
+-# Memory management
+-#
+-CONFIG_RT_PAGE_AFFINITY_BLOCK_SIZE=0x1000
+-CONFIG_RT_PAGE_MAX_ORDER=11
+-# CONFIG_RT_USING_MEMBLOCK is not set
+-
+-#
+-# Debugging
+-#
+-# CONFIG_RT_DEBUGGING_ALIASING is not set
+-# CONFIG_RT_DEBUGING_PAGE_LEAK is not set
+-# CONFIG_RT_DEBUGGING_PAGE_POISON is not set
+-# end of Debugging
+-# end of Memory management
+-
+ #
+ # Using USB legacy version
+ #
+@@ -899,6 +794,7 @@ CONFIG_RT_PAGE_MAX_ORDER=11
+ # CONFIG_PKG_USING_R_RHEALSTONE is not set
+ # CONFIG_PKG_USING_HEARTBEAT is not set
+ # CONFIG_PKG_USING_MICRO_ROS_RTTHREAD_PACKAGE is not set
++# CONFIG_PKG_USING_CHERRYECAT is not set
+ # end of system packages
  
--read_lib_symbols("am")
--read_lib_symbols("klib")
-+read_lib_symbols("am", "am")
-+read_lib_symbols("libs/klib", "klib")
- 
- am_app_mk_fp.write("SRCS += build/am-apps.c\n")
- am_app_c_fp.write("""#include <am.h>
- #include <klib.h>
-+#include <stdbool.h>
- #include <rtthread.h>
--extern Area am_apps_heap, am_apps_data, am_apps_bss;
-+extern _Area am_apps_heap, am_apps_data, am_apps_bss;
- extern uint8_t * am_apps_data_content;
- static void am_app_start_thread(void *args) {
-   void (*fn)(const char *mainargs) = ((void **)args)[0];
-@@ -93,13 +93,13 @@ static void am_app_start_thread(void *args) {
- static void am_app_start_wrapper(const char *app_name, void *app_main, int argc, char *argv[]) {
-   memcpy(am_apps_data.start, am_apps_data_content, am_apps_data.end - am_apps_data.start);
-   memset(am_apps_bss.start, 0, am_apps_bss.end - am_apps_bss.start);
--  heap = am_apps_heap;
-+  _heap = am_apps_heap;
-   void *args[2] = { app_main, (argc >= 2 ? argv[1] : "") };
-   rt_thread_t tid = rt_thread_create(app_name, am_app_start_thread, args, 0x4000, 0, 20);
-   rt_thread_startup(tid);
- }
- bool __dummy_ioe_init() { return true; }
--bool __dummy_cte_init(Context *(*handler)(Event ev, Context *ctx)) { return true; }
-+bool __dummy_cte_init(_Context *(*handler)(_Event ev, _Context *ctx)) { return true; }
- bool __dummy_vme_init(void *(*pgalloc)(int), void (*pgfree)(void *)) { return true; }
- bool __dummy_mpe_init(void (*entry)()) { return true; }
- void __rt_am_halt(int code) {
-diff --git a/bsp/abstract-machine/rtconfig.py b/bsp/abstract-machine/rtconfig.py
-index db68dba..7d34e62 100644
---- a/bsp/abstract-machine/rtconfig.py
-+++ b/bsp/abstract-machine/rtconfig.py
-@@ -35,7 +35,7 @@ if PLATFORM == 'gcc':
-     OBJDUMP = PREFIX + 'objdump'
-     OBJCPY  = PREFIX + 'objcopy'
- 
--    DEVICE  = ' -mcmodel=medany -march=rv64imac -mabi=lp64 '
-+    DEVICE  = ' -mcmodel=medany -march=rv64im -mabi=lp64 '
-     CFLAGS  = DEVICE + '-ffreestanding -flax-vector-conversions -Wno-cpp -fno-common -ffunction-sections -fdata-sections -fstrict-volatile-bitfields -fdiagnostics-color=always'
-     AFLAGS  = ' -c' + DEVICE + ' -x assembler-with-cpp -D__ASSEMBLY__ '
-     LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lgcc -static'
-diff --git a/bsp/abstract-machine/src/context.c b/bsp/abstract-machine/src/context.c
-index ee38829..e10f737 100644
---- a/bsp/abstract-machine/src/context.c
-+++ b/bsp/abstract-machine/src/context.c
-@@ -2,30 +2,64 @@
- #include <klib.h>
- #include <rtthread.h>
- 
--static Context* ev_handler(Event e, Context *c) {
-+static _Context **switch_from = NULL;
-+static _Context **switch_to = NULL;
+ #
+@@ -1056,6 +952,12 @@ CONFIG_RT_PAGE_MAX_ORDER=11
+ # CONFIG_PKG_USING_GD32_ARM_CMSIS_DRIVER is not set
+ # CONFIG_PKG_USING_GD32_ARM_SERIES_DRIVER is not set
+ # end of GD32 Drivers
 +
-+static _Context* ev_handler(_Event e, _Context *c) {
-   switch (e.event) {
-+    case _EVENT_YIELD: {
-+      if (switch_to) {
-+        if (switch_from) {
-+          *switch_from = c;
-+        }
-+        c = *switch_to;
-+        switch_from = switch_to = NULL;
-+      }
-+      break;
++#
++# HPMicro SDK
++#
++# CONFIG_PKG_USING_HPM_SDK is not set
++# end of HPMicro SDK
+ # end of HAL & SDK Drivers
+ 
+ #
+@@ -1569,16 +1471,11 @@ CONFIG_RT_PAGE_MAX_ORDER=11
+ #
+ # RISC-V QEMU virt64 configs
+ #
+-CONFIG_BSP_USING_VIRTIO=y
+-CONFIG_BSP_USING_VIRTIO_BLK=y
+-CONFIG_BSP_USING_VIRTIO_NET=y
+-CONFIG_BSP_USING_VIRTIO_CONSOLE=y
+-CONFIG_BSP_USING_VIRTIO_GPU=y
+-CONFIG_BSP_USING_VIRTIO_INPUT=y
++# CONFIG_BSP_USING_VIRTIO is not set
+ # end of RISC-V QEMU virt64 configs
+ 
+ CONFIG_BOARD_QEMU_VIRT_RV64=y
+-CONFIG_ENABLE_FPU=y
++# CONFIG_ENABLE_FPU is not set
+ # CONFIG_ENABLE_VECTOR is not set
+ # CONFIG_RT_USING_USERSPACE_32BIT_LIMIT is not set
+ CONFIG___STACKSIZE__=16384
+diff --git a/bsp/qemu-virt64-riscv/Kconfig b/bsp/qemu-virt64-riscv/Kconfig
+index 54475350..ddc31fe8 100644
+--- a/bsp/qemu-virt64-riscv/Kconfig
++++ b/bsp/qemu-virt64-riscv/Kconfig
+@@ -17,8 +17,8 @@ config BOARD_QEMU_VIRT_RV64
+     select RT_USING_COMPONENTS_INIT
+     select RT_USING_USER_MAIN
+     select RT_USING_CACHE
+-    select ARCH_MM_MMU
+-    select ARCH_REMAP_KERNEL
++    # select ARCH_MM_MMU
++    # select ARCH_REMAP_KERNEL
+     default y
+ 
+ config ENABLE_FPU
+diff --git a/bsp/qemu-virt64-riscv/applications/thead-sample.c b/bsp/qemu-virt64-riscv/applications/thead-sample.c
+new file mode 100644
+index 00000000..71a6a53c
+--- /dev/null
++++ b/bsp/qemu-virt64-riscv/applications/thead-sample.c
+@@ -0,0 +1,85 @@
++/* 
++ * Copyright (c) 2006-2018, RT-Thread Development Team 
++ * 
++ * SPDX-License-Identifier: Apache-2.0 
++ * 
++ * Change Logs: 
++ * Date           Author       Notes 
++ * 2018-08-24     yangjie      the first version 
++ */ 
++
++/*
++ * 程序清单：创建、初始化/脱离线程
++ *
++ * 这个例子会创建两个线程，一个动态线程，一个静态线程。
++ * 静态线程在运行完毕后自动被系统脱离，动态线程一直打印计数。
++ */
++#include <rtthread.h>
++
++#define THREAD_PRIORITY         25
++#define THREAD_STACK_SIZE       1024
++#define THREAD_TIMESLICE        5
++
++static rt_thread_t tid1 = RT_NULL;
++
++/* 线程1的入口函数 */
++static void thread1_entry(void *parameter)
++{
++    rt_uint32_t count = 0;
++
++    while (1)
++    {
++        /* 线程1采用低优先级运行，一直打印计数值 */
++        rt_kprintf("thread1 count: %d\n", count ++);
++        rt_thread_mdelay(5);
 +    }
-     default: printf("Unhandled event ID = %d\n", e.event); assert(0);
-   }
-   return c;
- }
- 
- void __am_cte_init() {
--  cte_init(ev_handler);
-+  _cte_init(ev_handler);
- }
- 
- void rt_hw_context_switch_to(rt_ubase_t to) {
--  assert(0);
-+  switch_to = (_Context **)to;
-+  _yield();
- }
- 
- void rt_hw_context_switch(rt_ubase_t from, rt_ubase_t to) {
--  assert(0);
-+  switch_from = (_Context **)from;
-+  switch_to   = (_Context **)to;
-+  _yield();
- }
- 
- void rt_hw_context_switch_interrupt(void *context, rt_ubase_t from, rt_ubase_t to, struct rt_thread *to_thread) {
-   assert(0);
- }
- 
-+void entry_wrapper(void **args) {
-+  void (*tentry)(void *) = args[0];
-+  void *param = args[1];
-+  void (*texit)(void) = args[2];
-+  tentry(param);
-+  texit();
 +}
 +
- rt_uint8_t *rt_hw_stack_init(void *tentry, void *parameter, rt_uint8_t *stack_addr, void *texit) {
--  assert(0);
--  return NULL;
-+  rt_uint8_t         *stk;
-+  stk  = stack_addr + sizeof(rt_uint32_t);
-+  stk  = (rt_uint8_t *)RT_ALIGN_DOWN((rt_ubase_t)stk, 8);
-+  stk -= sizeof(void *) * 3;
++rt_align(RT_ALIGN_SIZE)
++static char thread2_stack[1024];
++static struct rt_thread thread2;
 +
-+  void **args = (void **)stk;
-+  args[0] = tentry;
-+  args[1] = parameter;
-+  args[2] = texit;
++/* 线程2入口 */
++static void thread2_entry(void *param)
++{
++    rt_uint32_t count = 0;
 +
-+  _Context *context = _kcontext((_Area) { stk - RT_MAIN_THREAD_STACK_SIZE, stk }, (void (*)(void *))entry_wrapper, args);
-+  return (rt_uint8_t *)context;
- }
-diff --git a/bsp/abstract-machine/src/init.c b/bsp/abstract-machine/src/init.c
-index 93e2711..3fb99dc 100644
---- a/bsp/abstract-machine/src/init.c
-+++ b/bsp/abstract-machine/src/init.c
-@@ -4,10 +4,10 @@
- #include <klib-macros.h>
- 
- #define AM_APPS_HEAP_SIZE  0x2000000
--#define RT_HW_HEAP_BEGIN heap.start
--#define RT_HW_HEAP_END heap.end
-+#define RT_HW_HEAP_BEGIN _heap.start
-+#define RT_HW_HEAP_END _heap.end
- 
--Area am_apps_heap = {}, am_apps_data = {}, am_apps_bss = {};
-+_Area am_apps_heap = {}, am_apps_data = {}, am_apps_bss = {};
- uint8_t * am_apps_data_content = NULL;
- 
- void rt_hw_board_init() {
-@@ -53,11 +53,11 @@ void rt_hw_board_init() {
- }
- 
- int main() {
--  ioe_init();
-+  _ioe_init();
- #ifdef __ISA_NATIVE__
-   // trigger the real initialization of IOE to
-   // perform SDL initialization int this main thread with large stack
--  io_read(AM_TIMER_CONFIG);
-+  // _io_read(AM_TIMER_CONFIG);
- #endif
-   extern void __am_cte_init();
-   __am_cte_init();
-diff --git a/bsp/abstract-machine/src/interrupt.c b/bsp/abstract-machine/src/interrupt.c
-index 1652c5d..360bd62 100644
---- a/bsp/abstract-machine/src/interrupt.c
-+++ b/bsp/abstract-machine/src/interrupt.c
-@@ -2,9 +2,9 @@
- #include <klib.h>
- 
- void rt_hw_interrupt_enable() {
--  iset(1);
-+  _intr_write(1);
- }
- 
- void rt_hw_interrupt_disable() {
--  iset(0);
-+  _intr_write(0);
- }
-diff --git a/bsp/abstract-machine/src/uart.c b/bsp/abstract-machine/src/uart.c
-index e4eb866..a51669f 100644
---- a/bsp/abstract-machine/src/uart.c
-+++ b/bsp/abstract-machine/src/uart.c
-@@ -32,7 +32,7 @@ static rt_err_t _uart_control(struct rt_serial_device *serial, int cmd, void *ar
- }
- 
- static int _uart_putc(struct rt_serial_device *serial, char c) {
--  putch(c);
-+  _putc(c);
-   return 1;
- }
- 
-diff --git a/components/finsh/msh.c b/components/finsh/msh.c
-index a63e34d..0e6c33d 100644
---- a/components/finsh/msh.c
-+++ b/components/finsh/msh.c
-@@ -31,6 +31,10 @@
- 
- typedef int (*cmd_function_t)(int argc, char **argv);
- 
-+int __xstat(int ver, const char * path, struct stat * buf) {
++    /* 线程2拥有较高的优先级，以抢占线程1而获得执行 */
++    for (count = 0; count < 10 ; count++)
++    {
++        /* 线程2打印计数值 */
++        rt_kprintf("thread2 count: %d\n", count);
++    }
++    rt_kprintf("thread2 exit\n");
++    /* 线程2运行结束后也将自动被系统删除
++    (线程控制块和线程栈依然在idle线程中释放) */
++}
++
++/* 线程示例 */
++int thread_sample(void)
++{
++    /* 创建线程1，名称是thread1，入口是thread1_entry*/
++    tid1 = rt_thread_create("thread1",
++                            thread1_entry, RT_NULL,
++                            THREAD_STACK_SIZE,
++                            THREAD_PRIORITY, THREAD_TIMESLICE);
++    
++    /* 如果获得线程控制块，启动这个线程 */
++    if (tid1 != RT_NULL)
++        rt_thread_startup(tid1);
++
++    /* 初始化线程2，名称是thread2，入口是thread2_entry */
++    rt_thread_init(&thread2,
++                   "thread2",
++                   thread2_entry,
++                   RT_NULL,
++                   &thread2_stack[0],
++                   sizeof(thread2_stack),
++                   THREAD_PRIORITY - 1, THREAD_TIMESLICE);
++    rt_thread_startup(&thread2);
++
 +    return 0;
 +}
 +
- int msh_help(int argc, char **argv)
++/* 导出到 msh 命令列表中 */
++MSH_CMD_EXPORT(thread_sample, thread sample);
+diff --git a/bsp/qemu-virt64-riscv/driver/board.c b/bsp/qemu-virt64-riscv/driver/board.c
+index c5116aad..f1452e32 100644
+--- a/bsp/qemu-virt64-riscv/driver/board.c
++++ b/bsp/qemu-virt64-riscv/driver/board.c
+@@ -13,7 +13,7 @@
+ #include <rtdevice.h>
+ 
+ #include "board.h"
+-#include "mm_aspace.h"
++// #include "mm_aspace.h"
+ #include "tick.h"
+ 
+ #include "drv_uart.h"
+diff --git a/bsp/qemu-virt64-riscv/driver/drv_uart.c b/bsp/qemu-virt64-riscv/driver/drv_uart.c
+index 5e2a33e7..d7f7ea55 100644
+--- a/bsp/qemu-virt64-riscv/driver/drv_uart.c
++++ b/bsp/qemu-virt64-riscv/driver/drv_uart.c
+@@ -29,25 +29,41 @@ struct device_uart
+ void *uart0_base = (void*)0x10000000;
+ struct rt_serial_device serial0;
+ struct device_uart uart0;
++static volatile char *const am_serial_base = (char *)0xa00003f8;
++static volatile rt_uint32_t *const am_keyboard_base = (rt_uint32_t *)0xa0000060;
++static int lshift_pressed = 0;
++static int rshift_pressed = 0;
++static int lctrl_pressed = 0;
++static int rctrl_pressed = 0;
++static int sequence[32] = {0};
++static int seq_len = 0;
+ 
+-void uart_init(void)
+-{
+-    rt_uint32_t div = UART_REFERENCE_CLOCK / (UART_DEFAULT_BAUDRATE * 16);
+-
+-    write8_uart0(UART_IER, 0x00);
+-    write8_uart0(UART_LCR, UART_LCR_BAUD_LATCH);
+-
+-    // LSB
+-    write8_uart0(0, div & 0xff);
+-    // MSB
+-    write8_uart0(1, (div >> 8) & 0xff);
+-
+-    // set word length to 8 bits, no parity
+-    write8_uart0(UART_LCR, UART_LCR_EIGHT_BITS);
++#define UART_EOF (-1)
+ 
+-    write8_uart0(UART_FCR, UART_FCR_FIFO_ENABLE | UART_FCR_FIFO_CLEAR);
++#define PRIMITIVE_CONCAT(a, b) a##b
++#define CONCAT(a, b) PRIMITIVE_CONCAT(a, b)
++#define _KEYS(_) \
++  _(ESCAPE) \
++  _(F1) _(F2) _(F3) _(F4) _(F5) _(F6) _(F7) _(F8) _(F9) _(F10) _(F11) _(F12) \
++  _(GRAVE) _(1) _(2) _(3) _(4) _(5) _(6) _(7) _(8) _(9) _(0) \
++  _(MINUS) _(EQUALS) _(BACKSPACE) \
++  _(TAB) _(Q) _(W) _(E) _(R) _(T) _(Y) _(U) _(I) _(O) _(P) \
++  _(LEFTBRACKET) _(RIGHTBRACKET) _(BACKSLASH) \
++  _(CAPSLOCK) _(A) _(S) _(D) _(F) _(G) _(H) _(J) _(K) _(L) \
++  _(SEMICOLON) _(APOSTROPHE) _(RETURN) \
++  _(LSHIFT) _(Z) _(X) _(C) _(V) _(B) _(N) _(M) \
++  _(COMMA) _(PERIOD) _(SLASH) _(RSHIFT) \
++  _(LCTRL) _(APPLICATION) _(LALT) _(SPACE) _(RALT) _(RCTRL) \
++  _(UP) _(DOWN) _(LEFT) _(RIGHT) _(INSERT) _(DELETE) \
++  _(HOME) _(END) _(PAGEUP) _(PAGEDOWN)
++#define _KEY_NAME(k) _KEY_##k,
++enum {
++  _KEY_NONE = 0,
++  _KEYS(_KEY_NAME)
++};
+ 
+-    return;
++void uart_init(void)
++{
+ }
+ 
+ static rt_err_t _uart_configure(struct rt_serial_device *serial, struct serial_configure *cfg)
+@@ -57,57 +73,213 @@ static rt_err_t _uart_configure(struct rt_serial_device *serial, struct serial_c
+ 
+ static rt_err_t _uart_control(struct rt_serial_device *serial, int cmd, void *arg)
  {
-     rt_kprintf("RT-Thread shell commands:\n");
+-    struct device_uart *uart = (struct device_uart*)serial->parent.user_data;
+-
+-    switch (cmd)
+-    {
+-    case RT_DEVICE_CTRL_CLR_INT:
+-        if ((size_t)arg == RT_DEVICE_FLAG_INT_RX)
+-        {
+-            rt_uint8_t value = read8_uart0(UART_IER);
+-            write8_uart0(UART_IER, value & ~UART_IER_RX_ENABLE);
+-        }
+-        break;
+-
+-    case RT_DEVICE_CTRL_SET_INT:
+-        if ((size_t)arg == RT_DEVICE_FLAG_INT_RX)
+-        {
+-            rt_uint8_t value = read8_uart0(UART_IER);
+-            write8_uart0(UART_IER, value | UART_IER_RX_ENABLE);
+-        }
+-        break;
+-    }
+-
+     return (RT_EOK);
+ }
+ 
+-static int _uart_putc(struct rt_serial_device *serial, char c)
+-{
+-    struct device_uart *uart;
+-    uart = (struct device_uart*)serial->parent.user_data;
++static int _uart_putc(struct rt_serial_device *serial, char c) {
++  *am_serial_base = c;
++  return 1;
++}
+ 
+-    // wait for Transmit Holding Empty to be set in LSR.
+-    while((read8_uart0(UART_LSR) & UART_LSR_TX_IDLE) == 0)
+-        ;
+-    write8_uart0(UART_THR, c);
++#define ELEVENTH_ARGUMENT(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, ...) a11
++#define COUNT_ARGUMENTS(...) ELEVENTH_ARGUMENT(dummy, ## __VA_ARGS__, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
++#define _enqueue1(key) sequence[seq_len++] = key;
++#define _enqueue2(key, ...) \
++    sequence[seq_len++] = key; \
++    _enqueue1(__VA_ARGS__);
++#define _enqueue3(key, ...) \
++    sequence[seq_len++] = key; \
++    _enqueue2(__VA_ARGS__);
++#define enqueue(...) \
++  do { \
++    if (seq_len + COUNT_ARGUMENTS(__VA_ARGS__) > sizeof(sequence) / sizeof(sequence[0])) { \
++      break; \
++    } \
++    CONCAT(_enqueue, COUNT_ARGUMENTS(__VA_ARGS__))(__VA_ARGS__); \
++  } while (0)
+ 
+-    return (1);
++static int key_to_ascii(int keycode, int shift_pressed, int ctrl_pressed) {
++  if (!shift_pressed && !ctrl_pressed) {
++    switch (keycode) {
++      case _KEY_A: return 'a';
++      case _KEY_B: return 'b';
++      case _KEY_C: return 'c';
++      case _KEY_D: return 'd';
++      case _KEY_E: return 'e';
++      case _KEY_F: return 'f';
++      case _KEY_G: return 'g';
++      case _KEY_H: return 'h';
++      case _KEY_I: return 'i';
++      case _KEY_J: return 'j';
++      case _KEY_K: return 'k';
++      case _KEY_L: return 'l';
++      case _KEY_M: return 'm';
++      case _KEY_N: return 'n';
++      case _KEY_O: return 'o';
++      case _KEY_P: return 'p';
++      case _KEY_Q: return 'q';
++      case _KEY_R: return 'r';
++      case _KEY_S: return 's';
++      case _KEY_T: return 't';
++      case _KEY_U: return 'u';
++      case _KEY_V: return 'v';
++      case _KEY_W: return 'w';
++      case _KEY_X: return 'x';
++      case _KEY_Y: return 'y';
++      case _KEY_Z: return 'z';
++      case _KEY_1: return '1';
++      case _KEY_2: return '2';
++      case _KEY_3: return '3';
++      case _KEY_4: return '4';
++      case _KEY_5: return '5';
++      case _KEY_6: return '6';
++      case _KEY_7: return '7';
++      case _KEY_8: return '8';
++      case _KEY_9: return '9';
++      case _KEY_0: return '0';
++      case _KEY_SPACE: return ' ';
++      case _KEY_RETURN: return '\n';
++      case _KEY_TAB: return '\t';
++      case _KEY_BACKSPACE: return '\b';
++      case _KEY_MINUS: return '-';
++      case _KEY_EQUALS: return '=';
++      case _KEY_GRAVE: return '`';
++      case _KEY_LEFTBRACKET: return '[';
++      case _KEY_RIGHTBRACKET: return ']';
++      case _KEY_BACKSLASH: return '\\';
++      case _KEY_SEMICOLON: return ';';
++      case _KEY_APOSTROPHE: return '\'';
++      case _KEY_COMMA: return ',';
++      case _KEY_PERIOD: return '.';
++      case _KEY_SLASH: return '/';
++      case _KEY_ESCAPE: return 0x1b;
++    }
++  } else if (shift_pressed && !ctrl_pressed) {
++    switch (keycode) {
++      case _KEY_A: return 'A';
++      case _KEY_B: return 'B';
++      case _KEY_C: return 'C';
++      case _KEY_D: return 'D';
++      case _KEY_E: return 'E';
++      case _KEY_F: return 'F';
++      case _KEY_G: return 'G';
++      case _KEY_H: return 'H';
++      case _KEY_I: return 'I';
++      case _KEY_J: return 'J';
++      case _KEY_K: return 'K';
++      case _KEY_L: return 'L';
++      case _KEY_M: return 'M';
++      case _KEY_N: return 'N';
++      case _KEY_O: return 'O';
++      case _KEY_P: return 'P';
++      case _KEY_Q: return 'Q';
++      case _KEY_R: return 'R';
++      case _KEY_S: return 'S';
++      case _KEY_T: return 'T';
++      case _KEY_U: return 'U';
++      case _KEY_V: return 'V';
++      case _KEY_W: return 'W';
++      case _KEY_X: return 'X';
++      case _KEY_Y: return 'Y';
++      case _KEY_Z: return 'Z';
++      case _KEY_1: return '!';
++      case _KEY_2: return '@';
++      case _KEY_3: return '#';
++      case _KEY_4: return '$';
++      case _KEY_5: return '%';
++      case _KEY_6: return '^';
++      case _KEY_7: return '&';
++      case _KEY_8: return '*';
++      case _KEY_9: return '(';
++      case _KEY_0: return ')';
++      case _KEY_MINUS: return '_';
++      case _KEY_EQUALS: return '+';
++      case _KEY_GRAVE: return '~';
++      case _KEY_LEFTBRACKET: return '{';
++      case _KEY_RIGHTBRACKET: return '}';
++      case _KEY_BACKSLASH: return '|';
++      case _KEY_SEMICOLON: return ':';
++      case _KEY_APOSTROPHE: return '"';
++      case _KEY_COMMA: return '<';
++      case _KEY_PERIOD: return '>';
++      case _KEY_SLASH: return '?';
++    }
++  } else if (!shift_pressed && ctrl_pressed) {
++    switch (keycode) {
++      case _KEY_A: return 0x01;
++      case _KEY_B: return 0x02;
++      case _KEY_C: return 0x03;
++      case _KEY_D: return 0x04;
++      case _KEY_E: return 0x05;
++      case _KEY_F: return 0x06;
++      case _KEY_G: return 0x07;
++      case _KEY_H: return 0x08;
++      case _KEY_I: return 0x09;
++      case _KEY_J: return 0x0A;
++      case _KEY_K: return 0x0B;
++      case _KEY_L: return 0x0C;
++      case _KEY_M: return 0x0D;
++      case _KEY_N: return 0x0E;
++      case _KEY_O: return 0x0F;
++      case _KEY_P: return 0x10;
++      case _KEY_Q: return 0x11;
++      case _KEY_R: return 0x12;
++      case _KEY_S: return 0x13;
++      case _KEY_T: return 0x14;
++      case _KEY_U: return 0x15;
++      case _KEY_V: return 0x16;
++      case _KEY_W: return 0x17;
++      case _KEY_X: return 0x18;
++      case _KEY_Y: return 0x19;
++      case _KEY_Z: return 0x1A;
++      case _KEY_BACKSLASH: return 0x1C;
++      case _KEY_RIGHTBRACKET: return 0x1D;
++    }
++  }
++  switch (keycode) {
++    case _KEY_SPACE: return ' ';
++    case _KEY_RETURN: return '\n';
++    case _KEY_TAB: return '\t';
++    case _KEY_BACKSPACE: return '\b';
++    case _KEY_UP: enqueue(0x1b, '[', 'A'); break;
++    case _KEY_DOWN: enqueue(0x1b, '[', 'B'); break;
++    case _KEY_RIGHT: enqueue(0x1b, '[', 'C'); break;
++    case _KEY_LEFT: enqueue(0x1b, '[', 'D'); break;
++  }
++  return UART_EOF;
+ }
+ 
+-static int _uart_getc(struct rt_serial_device *serial)
+-{
+-    struct device_uart *uart;
+-    volatile rt_uint32_t lsr;
+-    int ch = -1;
++static int _uart_getc(struct rt_serial_device *serial) {
++  static const char *p = "help\nlist thread\n";
++  if (*p != '\0') return *(p ++);
+ 
+-    uart = (struct device_uart*)serial->parent.user_data;
+-    lsr = read8_uart0(UART_LSR);
++  int keycode = *am_keyboard_base;
++  if (keycode == 0) {
++    return UART_EOF;
++  }
+ 
+-    if (lsr & UART_LSR_RX_READY)
+-    {
+-        ch = read8_uart0(UART_RHR);
+-    }
+-    return ch;
++  if ((keycode & 0x7fff) == _KEY_LSHIFT) {
++    lshift_pressed = (keycode & 0x8000) ? 1 : 0;
++  }
++  if ((keycode & 0x7fff) == _KEY_RSHIFT) {
++    rshift_pressed = (keycode & 0x8000) ? 1 : 0;
++  }
++  if ((keycode & 0x7fff) == _KEY_LCTRL) {
++    lctrl_pressed = (keycode & 0x8000) ? 1 : 0;
++  }
++  if ((keycode & 0x7fff) == _KEY_RCTRL) {
++    rctrl_pressed = (keycode & 0x8000) ? 1 : 0;
++  }
++  if (seq_len > 0) {
++    seq_len--;
++    return sequence[seq_len];
++  }
++  if (keycode & 0x8000) {
++    return key_to_ascii(keycode & 0x7fff,
++                        lshift_pressed || rshift_pressed,
++                        lctrl_pressed || rctrl_pressed);
++  }
++  return UART_EOF;
+ }
+ 
+ const struct rt_uart_ops _uart_ops = {
+@@ -152,10 +324,10 @@ int rt_hw_uart_init(void)
+ 
+     rt_hw_serial_register(serial,
+                           RT_CONSOLE_DEVICE_NAME,
+-                          RT_DEVICE_FLAG_STREAM | RT_DEVICE_FLAG_RDWR | RT_DEVICE_FLAG_INT_RX,
++                          RT_DEVICE_FLAG_STREAM | RT_DEVICE_FLAG_RDWR /* | RT_DEVICE_FLAG_INT_RX */,
+                           uart);
+-    rt_hw_interrupt_install(uart->irqno, rt_hw_uart_isr, serial, RT_CONSOLE_DEVICE_NAME);
+-    rt_hw_interrupt_umask(uart->irqno);
++    // rt_hw_interrupt_install(uart->irqno, rt_hw_uart_isr, serial, RT_CONSOLE_DEVICE_NAME);
++    // rt_hw_interrupt_umask(uart->irqno);
+     return 0;
+ }
+ 
+diff --git a/bsp/qemu-virt64-riscv/link.lds b/bsp/qemu-virt64-riscv/link.lds
+index a76fed4f..582a4fe7 100644
+--- a/bsp/qemu-virt64-riscv/link.lds
++++ b/bsp/qemu-virt64-riscv/link.lds
+@@ -20,13 +20,13 @@ OUTPUT_ARCH( "riscv" )
+ 
+ MEMORY
+ {
+-   SRAM : ORIGIN = 0x80200000, LENGTH = 0x1000000
++   SRAM : ORIGIN = 0x80000000, LENGTH = 0x1000000
+ }
+ 
+ ENTRY(_start)
+ SECTIONS
+ {
+-    . = 0x80200000 ;
++    . = 0x80000000 ;
+ 
+     /* __STACKSIZE__ = 4096; */
+     __text_start = .;
+diff --git a/bsp/qemu-virt64-riscv/rtconfig.h b/bsp/qemu-virt64-riscv/rtconfig.h
+index f92d3b22..50a2be3b 100644
+--- a/bsp/qemu-virt64-riscv/rtconfig.h
++++ b/bsp/qemu-virt64-riscv/rtconfig.h
+@@ -77,7 +77,7 @@
+ #define RT_ALIGN_SIZE 8
+ #define RT_THREAD_PRIORITY_32
+ #define RT_THREAD_PRIORITY_MAX 32
+-#define RT_TICK_PER_SECOND 100
++#define RT_TICK_PER_SECOND 10
+ #define RT_USING_OVERFLOW_CHECK
+ #define RT_USING_HOOK
+ #define RT_HOOK_USING_FUNC_PTR
+@@ -121,18 +121,14 @@
+ #define RT_CONSOLEBUF_SIZE 256
+ #define RT_CONSOLE_DEVICE_NAME "uart0"
+ #define RT_VER_NUM 0x50201
+-#define RT_USING_STDC_ATOMIC
+ #define RT_BACKTRACE_LEVEL_MAX_NR 32
+ /* end of RT-Thread Kernel */
+ #define ARCH_CPU_64BIT
+ #define RT_USING_CACHE
+-#define ARCH_MM_MMU
+ #define ARCH_RISCV
+-#define ARCH_RISCV_FPU
+ #define ARCH_RISCV64
+ #define ARCH_USING_NEW_CTX_SWITCH
+ #define ARCH_USING_RISCV_COMMON64
+-#define ARCH_REMAP_KERNEL
+ 
+ /* RT-Thread Components */
+ 
+@@ -148,6 +144,7 @@
+ #define FINSH_THREAD_STACK_SIZE 16384
+ #define FINSH_USING_HISTORY
+ #define FINSH_HISTORY_LINES 10
++#define FINSH_USING_FUNC_EXT
+ #define FINSH_USING_SYMTAB
+ #define FINSH_CMD_SIZE 80
+ #define MSH_USING_BUILT_IN_COMMANDS
+@@ -201,14 +198,6 @@
+ #define RT_USING_RANDOM
+ #define RT_USING_RTC
+ #define RT_USING_SOFT_RTC
+-#define RT_USING_VIRTIO
+-#define RT_USING_VIRTIO10
+-#define RT_USING_VIRTIO_BLK
+-#define RT_USING_VIRTIO_NET
+-#define RT_USING_VIRTIO_CONSOLE
+-#define RT_USING_VIRTIO_CONSOLE_PORT_MAX_NR 4
+-#define RT_USING_VIRTIO_GPU
+-#define RT_USING_VIRTIO_INPUT
+ #define RT_USING_PIN
+ #define RT_USING_KTIME
+ /* end of Device Drivers */
+@@ -230,11 +219,7 @@
+ 
+ #define RT_USING_POSIX_FS
+ #define RT_USING_POSIX_DEVIO
+-#define RT_USING_POSIX_STDIO
+ #define RT_USING_POSIX_POLL
+-#define RT_USING_POSIX_SELECT
+-#define RT_USING_POSIX_TERMIOS
+-#define RT_USING_POSIX_AIO
+ #define RT_USING_POSIX_DELAY
+ #define RT_USING_POSIX_CLOCK
+ #define RT_USING_POSIX_TIMER
+@@ -252,65 +237,6 @@
+ 
+ /* Network */
+ 
+-#define RT_USING_SAL
+-#define SAL_INTERNET_CHECK
+-
+-/* Docking with protocol stacks */
+-
+-#define SAL_USING_LWIP
+-/* end of Docking with protocol stacks */
+-#define SAL_USING_POSIX
+-#define RT_USING_NETDEV
+-#define NETDEV_USING_IFCONFIG
+-#define NETDEV_USING_PING
+-#define NETDEV_USING_NETSTAT
+-#define NETDEV_USING_AUTO_DEFAULT
+-#define NETDEV_IPV4 1
+-#define NETDEV_IPV6 0
+-#define RT_USING_LWIP
+-#define RT_USING_LWIP203
+-#define RT_USING_LWIP_VER_NUM 0x20003
+-#define RT_LWIP_MEM_ALIGNMENT 4
+-#define RT_LWIP_IGMP
+-#define RT_LWIP_ICMP
+-#define RT_LWIP_DNS
+-#define RT_LWIP_DHCP
+-#define IP_SOF_BROADCAST 1
+-#define IP_SOF_BROADCAST_RECV 1
+-
+-/* Static IPv4 Address */
+-
+-#define RT_LWIP_IPADDR "192.168.1.30"
+-#define RT_LWIP_GWADDR "192.168.1.1"
+-#define RT_LWIP_MSKADDR "255.255.255.0"
+-/* end of Static IPv4 Address */
+-#define RT_LWIP_UDP
+-#define RT_LWIP_TCP
+-#define RT_LWIP_RAW
+-#define RT_MEMP_NUM_NETCONN 8
+-#define RT_LWIP_PBUF_NUM 16
+-#define RT_LWIP_RAW_PCB_NUM 4
+-#define RT_LWIP_UDP_PCB_NUM 4
+-#define RT_LWIP_TCP_PCB_NUM 4
+-#define RT_LWIP_TCP_SEG_NUM 40
+-#define RT_LWIP_TCP_SND_BUF 8196
+-#define RT_LWIP_TCP_WND 8196
+-#define RT_LWIP_TCPTHREAD_PRIORITY 10
+-#define RT_LWIP_TCPTHREAD_MBOX_SIZE 8
+-#define RT_LWIP_TCPTHREAD_STACKSIZE 8192
+-#define RT_LWIP_ETHTHREAD_PRIORITY 12
+-#define RT_LWIP_ETHTHREAD_STACKSIZE 8192
+-#define RT_LWIP_ETHTHREAD_MBOX_SIZE 8
+-#define LWIP_NETIF_STATUS_CALLBACK 1
+-#define LWIP_NETIF_LINK_CALLBACK 1
+-#define RT_LWIP_NETIF_NAMESIZE 6
+-#define SO_REUSE 1
+-#define LWIP_SO_RCVTIMEO 1
+-#define LWIP_SO_SNDTIMEO 1
+-#define LWIP_SO_RCVBUF 1
+-#define LWIP_SO_LINGER 0
+-#define LWIP_NETIF_LOOPBACK 0
+-#define RT_LWIP_USING_PING
+ /* end of Network */
+ 
+ /* Memory protection */
+@@ -327,16 +253,6 @@
+ #define RT_USING_ADT_REF
+ /* end of Utilities */
+ 
+-/* Memory management */
+-
+-#define RT_PAGE_AFFINITY_BLOCK_SIZE 0x1000
+-#define RT_PAGE_MAX_ORDER 11
+-
+-/* Debugging */
+-
+-/* end of Debugging */
+-/* end of Memory management */
+-
+ /* Using USB legacy version */
+ 
+ /* end of Using USB legacy version */
+@@ -467,6 +383,10 @@
+ /* GD32 Drivers */
+ 
+ /* end of GD32 Drivers */
++
++/* HPMicro SDK */
++
++/* end of HPMicro SDK */
+ /* end of HAL & SDK Drivers */
+ 
+ /* sensors drivers */
+@@ -549,15 +469,8 @@
+ 
+ /* RISC-V QEMU virt64 configs */
+ 
+-#define BSP_USING_VIRTIO
+-#define BSP_USING_VIRTIO_BLK
+-#define BSP_USING_VIRTIO_NET
+-#define BSP_USING_VIRTIO_CONSOLE
+-#define BSP_USING_VIRTIO_GPU
+-#define BSP_USING_VIRTIO_INPUT
+ /* end of RISC-V QEMU virt64 configs */
+ #define BOARD_QEMU_VIRT_RV64
+-#define ENABLE_FPU
+ #define __STACKSIZE__ 16384
+ 
+ #endif
+diff --git a/bsp/qemu-virt64-riscv/rtconfig.py b/bsp/qemu-virt64-riscv/rtconfig.py
+index 09d530af..87050999 100644
+--- a/bsp/qemu-virt64-riscv/rtconfig.py
++++ b/bsp/qemu-virt64-riscv/rtconfig.py
+@@ -32,10 +32,12 @@ if PLATFORM == 'gcc':
+     OBJDUMP = PREFIX + 'objdump'
+     OBJCPY  = PREFIX + 'objcopy'
+ 
+-    DEVICE  = ' -mcmodel=medany -march=rv64imafdc -mabi=lp64 '
++    DEVICE  = ' -mcmodel=medany -march=rv64im_zicsr -mabi=lp64 '
+     CFLAGS  = DEVICE + '-ffreestanding -flax-vector-conversions -Wno-cpp -fno-common -ffunction-sections -fdata-sections -fstrict-volatile-bitfields -fdiagnostics-color=always'
++    # CFLAGS  = DEVICE + '-ffreestanding -flax-vector-conversions -Wno-cpp -fno-common -ffunction-sections -fdata-sections -fstrict-volatile-bitfields -fdiagnostics-color=always -D_POSIX_C_SOURCE=200809L -DO_TMPFILE=0x800000'
+     AFLAGS  = ' -c' + DEVICE + ' -x assembler-with-cpp -D__ASSEMBLY__ '
+-    LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lsupc++ -lgcc -static'
++    LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lsupc++ -nodefaultlibs -static'
++    # LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lsupc++ -nodefaultlibs -L/nix/store/4pdr3im6dq14jbnamfkw42mapvisbrbg-newlib-riscv64-none-elf-4.5.0.20241231/riscv64-none-elf/lib/ -lc -static'
+     CPATH   = ''
+     LPATH   = ''
+ 
+@@ -47,5 +49,6 @@ if PLATFORM == 'gcc':
+ 
+     CXXFLAGS = CFLAGS
+ 
++CPPDEFINES = ['_POSIX_C_SOURCE=1']
+ DUMP_ACTION = OBJDUMP + ' -D -S $TARGET > rtthread.asm\n'
+ POST_ACTION = OBJCPY + ' -O binary $TARGET rtthread.bin\n' + SIZE + ' $TARGET \n'
+diff --git a/bsp/qemu-virt64-riscv/shell.nix b/bsp/qemu-virt64-riscv/shell.nix
+new file mode 100644
+index 00000000..1b7fdd76
+--- /dev/null
++++ b/bsp/qemu-virt64-riscv/shell.nix
+@@ -0,0 +1,32 @@
++{ pkgs ? import <nixpkgs> {} }:
++
++let
++  riscvPkgs = import <nixpkgs> {
++    crossSystem = {
++      config = "riscv64-unknown-linux-musl";
++      gcc = {
++        arch = "rv64ima_zicsr";
++        abi = "lp64";
++      };
++    };
++  };
++  
++  # riscvPkgs = pkgs.pkgsCross.riscv64-musl.extend (final: prev: {
++  #   musl = prev.musl.overrideAttrs (old: {
++  #     NIX_CFLAGS_COMPILE = "-march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany";
++  #     configureFlags = old.configureFlags ++ ["LIBS=-lgcc"];
++  #   });
++    # gcc-unwrapped = prev.gcc-unwrapped.overrideAttrs (old: {
++    #   configureFlags = old.configureFlags ++ pkgs.lib.optionals (old.stdenv.targetPlatform.isRiscv) ["--with-arch=rv64ima_zicsr" "--with-abi=lp64"];
++    # });
++  # });
++  # riscvPkgs = pkgs.pkgsCross.riscv64-embedded;
++in 
++pkgs.mkShell {
++  buildInputs = with pkgs; [
++    riscvPkgs.buildPackages.gcc
++    (python3.withPackages (ps: with ps; [scons kconfiglib]))
++    scons
++    # (riscvPkgs.newlib-nano.overrideDerivation (old: { NIX_CFLAGS_COMPILE = "-march=rv64im_zicsr -mabi=lp64 -mcmodel=medany"; }))
++  ];
++}
+diff --git a/components/dfs/dfs_v2/filesystems/devfs/devfs.c b/components/dfs/dfs_v2/filesystems/devfs/devfs.c
+index 38e9a2e4..7ca57016 100644
+--- a/components/dfs/dfs_v2/filesystems/devfs/devfs.c
++++ b/components/dfs/dfs_v2/filesystems/devfs/devfs.c
+@@ -12,6 +12,7 @@
+ #include <rtdevice.h>
+ 
+ #include <fcntl.h>
++#include <sys/fcntl.h>
+ #include <errno.h>
+ #include <sys/unistd.h>
+ 
+diff --git a/components/finsh/shell.c b/components/finsh/shell.c
+index 05a10181..22a730ee 100644
+--- a/components/finsh/shell.c
++++ b/components/finsh/shell.c
+@@ -180,7 +180,8 @@ int finsh_getchar(void)
+ 
+     while (rt_device_read(device, -1, &ch, 1) != 1)
+     {
+-        rt_sem_take(&shell->rx_sem, RT_WAITING_FOREVER);
++        // rt_sem_take(&shell->rx_sem, RT_WAITING_FOREVER);
++        rt_thread_yield();
+         if (shell->device != device)
+         {
+             device = shell->device;
+@@ -231,7 +232,7 @@ void finsh_set_device(const char *device_name)
+     /* check whether it's a same device */
+     if (dev == shell->device) return;
+     /* open this device and set the new device in finsh shell */
+-    if (rt_device_open(dev, RT_DEVICE_OFLAG_RDWR | RT_DEVICE_FLAG_INT_RX | \
++    if (rt_device_open(dev, RT_DEVICE_OFLAG_RDWR | /* RT_DEVICE_FLAG_INT_RX | */ \
+                        RT_DEVICE_FLAG_STREAM) == RT_EOK)
+     {
+         if (shell->device != RT_NULL)
+diff --git a/components/libc/compilers/common/include/sys/time.h b/components/libc/compilers/common/include/sys/time.h
+index 817fe786..46c79c1e 100644
+--- a/components/libc/compilers/common/include/sys/time.h
++++ b/components/libc/compilers/common/include/sys/time.h
+@@ -12,6 +12,7 @@
+ #ifndef __SYS_TIME_H__
+ #define __SYS_TIME_H__
+ 
++#include <time.h>
+ #include <rtconfig.h>
+ #include <sys/types.h>
+ #include <stdint.h>
+diff --git a/components/libc/compilers/musl/SConscript b/components/libc/compilers/musl/SConscript
+index 8c5d0448..d4a48097 100644
+--- a/components/libc/compilers/musl/SConscript
++++ b/components/libc/compilers/musl/SConscript
+@@ -16,7 +16,8 @@ if musllibc_version:
+     CPPPATH = [cwd]
+     CPPDEFINES = ['RT_USING_MUSLLIBC', 'RT_USING_LIBC']
+     LIBS = ['c', 'gcc']
+-    LINKFLAGS = ' --specs=kernel.specs'
++    # LINKFLAGS = ' --specs=kernel.specs'
++    LINKFLAGS = ''
+     AddDepend(['RT_USING_MUSLLIBC', 'RT_USING_LIBC'])
+ 
+     group = group + DefineGroup('Compiler', src, depend = [''], CPPPATH = CPPPATH, LINKFLAGS = LINKFLAGS, CPPDEFINES = CPPDEFINES, LIBS = LIBS)
+diff --git a/components/mm/SConscript b/components/mm/SConscript
+index d1f53725..f1bda0de 100644
+--- a/components/mm/SConscript
++++ b/components/mm/SConscript
+@@ -11,6 +11,8 @@ if GetDepend('ARCH_ARM_CORTEX_A') or GetDepend('ARCH_ARMV8') or GetDepend('ARCH_
+ 
+     CPPPATH = [cwd]
+ 
+-    group = DefineGroup('mm', src, depend = ['ARCH_MM_MMU'], CPPPATH = CPPPATH)
++    if not GetDepend('ARCH_USING_MMU'):
++        src = []
++    group = DefineGroup('mm', src, depend = [], CPPPATH = CPPPATH)
+ 
+ Return('group')
+diff --git a/libcpu/risc-v/common64/SConscript b/libcpu/risc-v/common64/SConscript
+index 08acc799..5648f96c 100644
+--- a/libcpu/risc-v/common64/SConscript
++++ b/libcpu/risc-v/common64/SConscript
+@@ -6,6 +6,8 @@ CPPPATH = [cwd]
+ 
+ if not GetDepend('ARCH_USING_ASID'):
+     SrcRemove(src, ['asid.c'])
++if not GetDepend('ARCH_USING_MMU'):
++    SrcRemove(src, ['mmu.c', 'riscv_mmu.c'])
+ 
+ group = DefineGroup('libcpu', src, depend = [''], CPPPATH = CPPPATH)
+ 
+diff --git a/libcpu/risc-v/common64/backtrace.c b/libcpu/risc-v/common64/backtrace.c
+index 8cfe7126..74ec3ffd 100644
+--- a/libcpu/risc-v/common64/backtrace.c
++++ b/libcpu/risc-v/common64/backtrace.c
+@@ -13,7 +13,9 @@
+ #include <rtdbg.h>
+ 
+ #include <rtthread.h>
++#ifdef ARCH_MM_MMU
+ #include <mm_aspace.h>
++#endif
+ #include "riscv_mmu.h"
+ #include "stack.h"
+ 
+@@ -92,7 +94,11 @@ rt_err_t rt_hw_backtrace_frame_unwind(rt_thread_t thread, struct rt_hw_backtrace
+         }
+         else
+ #endif
++#ifdef ARCH_MM_MMU
+         if ((rt_kmem_v2p(fp) != ARCH_MAP_FAILED))
++#else
++        if (1)
++#endif
+         {
+             rc = _bt_kaddr(fp, frame);
+         }
+diff --git a/libcpu/risc-v/common64/mmu.h b/libcpu/risc-v/common64/mmu.h
+index cb9ae45f..7afc4ba1 100644
+--- a/libcpu/risc-v/common64/mmu.h
++++ b/libcpu/risc-v/common64/mmu.h
+@@ -14,7 +14,9 @@
+ 
+ #include "riscv.h"
+ #include "riscv_mmu.h"
++// #ifdef ARCH_MM_MMU
+ #include <mm_aspace.h>
++// #endif
+ #include <stddef.h>
+ 
+ /* RAM, Flash, or ROM */
+diff --git a/libcpu/risc-v/common64/sbi.c b/libcpu/risc-v/common64/sbi.c
+index b2b1e8e7..ea68c747 100644
+--- a/libcpu/risc-v/common64/sbi.c
++++ b/libcpu/risc-v/common64/sbi.c
+@@ -51,6 +51,9 @@ static bool has_time_extension = false;
+ static bool has_ipi_extension = false;
+ static bool has_rfnc_extension = false;
+ 
++static volatile long *const mtime = (void *)0xa0000048;
++static volatile long *const mtimecmp = (void *)(0xa0000048 + 8);
++
+ static struct sbi_ret sbi_get_spec_version(void)
+ {
+     return (SBI_CALL0(SBI_EXT_ID_BASE, SBI_BASE_GET_SPEC_VERSION));
+@@ -115,18 +118,7 @@ void sbi_print_version(void)
+ 
+ void sbi_set_timer(uint64_t val)
+ {
+-    struct sbi_ret ret;
+-
+-    /* Use the TIME legacy replacement extension, if available. */
+-    if (has_time_extension)
+-    {
+-        ret = SBI_CALL1(SBI_EXT_ID_TIME, SBI_TIME_SET_TIMER, val);
+-        RT_ASSERT(ret.error == SBI_SUCCESS);
+-    }
+-    else
+-    {
+-        (void)SBI_CALL1(SBI_SET_TIMER, 0, val);
+-    }
++    *mtimecmp = val;
+ }
+ 
+ void sbi_send_ipi(const unsigned long *hart_mask)
+diff --git a/libcpu/risc-v/common64/startup_gcc.S b/libcpu/risc-v/common64/startup_gcc.S
+index 184b48a1..ed9670fe 100644
+--- a/libcpu/risc-v/common64/startup_gcc.S
++++ b/libcpu/risc-v/common64/startup_gcc.S
+@@ -122,7 +122,7 @@ _after_pc_relocation:
+     csrw    stvec, t0
+ 1:
+ #endif
+-    call    sbi_init
++//    call    sbi_init
+     call    primary_cpu_entry
+ 
+ _never_return_here:
+diff --git a/libcpu/risc-v/common64/trap.c b/libcpu/risc-v/common64/trap.c
+index 1b79b739..8b02c4c8 100644
+--- a/libcpu/risc-v/common64/trap.c
++++ b/libcpu/risc-v/common64/trap.c
+@@ -12,12 +12,15 @@
+ #include <rtthread.h>
+ #include <stdint.h>
+ 
++#ifdef ARCH_MM_MMU
+ #include <mm_fault.h>
+ #include <mmu.h>
++#endif
+ #include <encoding.h>
+ #include <stack.h>
+ #include <sbi.h>
+ #include <riscv.h>
++#include <riscv_mmu.h>
+ #include <interrupt.h>
+ #include <plic.h>
+ #include <tick.h>
 -- 
-2.30.2
+2.50.1
 

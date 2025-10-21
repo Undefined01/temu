@@ -40,4 +40,10 @@ public final class SerialPort {
     }
     return -1;
   }
+
+  @ExportMessage
+  @TruffleBoundary
+  public void write1(long address, byte data) {
+    System.out.print((char) data);
+  }
 }
