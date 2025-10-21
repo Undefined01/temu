@@ -7,7 +7,6 @@ import com.oracle.truffle.api.library.ExportMessage;
 import java.util.LinkedList;
 import java.util.Queue;
 import javafx.scene.input.KeyCode;
-import website.lihan.temu.Utils;
 
 @ExportLibrary(DeviceLibrary.class)
 public final class Keyboard {

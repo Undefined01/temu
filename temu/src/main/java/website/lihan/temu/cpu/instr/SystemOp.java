@@ -1,33 +1,29 @@
 package website.lihan.temu.cpu.instr;
 
 import com.oracle.truffle.api.CompilerDirectives;
-import website.lihan.temu.Utils;
+import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.cpu.HaltException;
 import website.lihan.temu.cpu.IllegalInstructionException;
 import website.lihan.temu.cpu.InterruptException;
 import website.lihan.temu.cpu.JumpException;
-import website.lihan.temu.cpu.Rv64State;
-import website.lihan.temu.cpu.RvUtils;
-import website.lihan.temu.cpu.RvUtils.IInstruct;
-import website.lihan.temu.cpu.csr.CsrId;
-import website.lihan.temu.cpu.csr.MStatus;
-import website.lihan.temu.cpu.csr.SStatus;
 import website.lihan.temu.cpu.Opcodes.SystemFunct12;
 import website.lihan.temu.cpu.Opcodes.SystemFunct3;
-import com.oracle.truffle.api.nodes.Node;
-import website.lihan.temu.cpu.instr.CsrRWNode;
+import website.lihan.temu.cpu.Rv64State;
+import website.lihan.temu.cpu.RvUtils.IInstruct;
+import website.lihan.temu.cpu.csr.MStatus;
+import website.lihan.temu.cpu.csr.SStatus;
 
 public class SystemOp {
   public static void execute(Rv64State cpu, long pc, int instr, Node[] nodes) {
-      if ((instr & 0x80) != 0) {
-        doCsrRW(cpu, instr, nodes);
-        return;
-      }
-      final var i = IInstruct.decode(instr);
-      switch (i.funct3()) {
-        case SystemFunct3.PRIV -> doPriv(cpu, pc, i);
-        default -> throw IllegalInstructionException.create(pc, instr);
-      }
+    if ((instr & 0x80) != 0) {
+      doCsrRW(cpu, instr, nodes);
+      return;
+    }
+    final var i = IInstruct.decode(instr);
+    switch (i.funct3()) {
+      case SystemFunct3.PRIV -> doPriv(cpu, pc, i);
+      default -> throw IllegalInstructionException.create(pc, instr);
+    }
   }
 
   private static void doCsrRW(Rv64State cpu, int instr, Node[] nodes) {
@@ -64,14 +60,14 @@ public class SystemOp {
         var oldCSRValue = csrNode.read();
         cpu.setReg(csrNode.rd, oldCSRValue);
         if (csrNode.rs1 != 0) {
-        csrNode.write( oldCSRValue | csrNode.rs1);
+          csrNode.write(oldCSRValue | csrNode.rs1);
         }
       }
       case SystemFunct3.CSRRCI -> {
         var oldCSRValue = csrNode.read();
         cpu.setReg(csrNode.rd, oldCSRValue);
         if (csrNode.rs1 != 0) {
-        csrNode.write( oldCSRValue & ~csrNode.rs1);
+          csrNode.write(oldCSRValue & ~csrNode.rs1);
         }
       }
       default -> throw CompilerDirectives.shouldNotReachHere();
@@ -80,11 +76,13 @@ public class SystemOp {
 
   private static void doPriv(Rv64State cpu, long pc, IInstruct i) {
     switch (i.imm()) {
-      case SystemFunct12.ECALL -> {switch (cpu.getPrivilegeLevel()) {
-        case 1 -> throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_S_MODE);
-        case 3 -> throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_M_MODE);
-        default -> throw CompilerDirectives.shouldNotReachHere();
-      }}
+      case SystemFunct12.ECALL -> {
+        switch (cpu.getPrivilegeLevel()) {
+          case 1 -> throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_S_MODE);
+          case 3 -> throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_M_MODE);
+          default -> throw CompilerDirectives.shouldNotReachHere();
+        }
+      }
       case SystemFunct12.EBREAK -> throw HaltException.create(pc, cpu.getReg(10));
       case SystemFunct12.SRET -> {
         final var mstatus = new MStatus(cpu.getCsrFile().mstatus.getValue());
@@ -103,7 +101,9 @@ public class SystemOp {
         cpu.getCsrFile().mstatus.setValue(mstatus.getValue());
         throw JumpException.create(mepc.getValue());
       }
-      default -> throw IllegalInstructionException.create("Unsupported PRIV funct12: pc=%08x, funct12=%03x", pc, i.imm());
+      default ->
+          throw IllegalInstructionException.create(
+              "Unsupported PRIV funct12: pc=%08x, funct12=%03x", pc, i.imm());
     }
   }
 

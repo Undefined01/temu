@@ -10,10 +10,8 @@ import com.oracle.truffle.api.nodes.BytecodeOSRNode;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
 import website.lihan.temu.Rv64Context;
-import website.lihan.temu.Utils;
+import website.lihan.temu.cpu.Opcodes.SystemFunct3;
 import website.lihan.temu.cpu.RvUtils.BInstruct;
 import website.lihan.temu.cpu.RvUtils.IInstruct;
 import website.lihan.temu.cpu.RvUtils.JInstruct;
@@ -22,7 +20,6 @@ import website.lihan.temu.cpu.RvUtils.UInstruct;
 import website.lihan.temu.cpu.instr.BranchNode;
 import website.lihan.temu.cpu.instr.CallNode;
 import website.lihan.temu.cpu.instr.CsrRWNode;
-import website.lihan.temu.cpu.instr.RvIndirectCallNodeGen;
 import website.lihan.temu.cpu.instr.JalNode;
 import website.lihan.temu.cpu.instr.LoadNode;
 import website.lihan.temu.cpu.instr.LoadNodeGen;
@@ -30,20 +27,19 @@ import website.lihan.temu.cpu.instr.Op;
 import website.lihan.temu.cpu.instr.Op32;
 import website.lihan.temu.cpu.instr.OpImm;
 import website.lihan.temu.cpu.instr.OpImm32;
+import website.lihan.temu.cpu.instr.RvIndirectCallNodeGen;
 import website.lihan.temu.cpu.instr.StoreNode;
 import website.lihan.temu.cpu.instr.StoreNodeGen;
 import website.lihan.temu.cpu.instr.SystemOp;
 import website.lihan.temu.device.Bus;
 import website.lihan.temu.device.RTC;
-import website.lihan.temu.cpu.Opcodes.SystemFunct3;
 
 public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   @CompilationFinal long baseAddr;
   @CompilationFinal int entryBci;
   @Child Bus bus;
 
-  @CompilationFinal
-  Rv64State cpu;
+  @CompilationFinal Rv64State cpu;
 
   @CompilationFinal(dimensions = 1)
   byte[] bc;
@@ -159,7 +155,8 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
             return 0;
           } else {
             cpu.setReg(node.rd, node.returnPc);
-            // nextBci must be a constant during explode looping. But the targetPc of jalr instruction
+            // nextBci must be a constant during explode looping. But the targetPc of jalr
+            // instruction
             // comes from a register and is not a constant.
             // Hence, we have to throw a JumpException here to exit the explode looping.
             throw JumpException.create(nextPc);
@@ -283,8 +280,12 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         case Opcodes.SYSTEM -> {
           final var i = IInstruct.decode(instr);
           switch (i.funct3()) {
-            case SystemFunct3.CSRRW, SystemFunct3.CSRRS, SystemFunct3.CSRRC,
-                SystemFunct3.CSRRWI, SystemFunct3.CSRRSI, SystemFunct3.CSRRCI -> {
+            case SystemFunct3.CSRRW,
+                SystemFunct3.CSRRS,
+                SystemFunct3.CSRRC,
+                SystemFunct3.CSRRWI,
+                SystemFunct3.CSRRSI,
+                SystemFunct3.CSRRCI -> {
               final var nodeIdx = nodeList.size();
               nodeList.add(new CsrRWNode(i.imm() & 0xfff, i.rs1(), i.rd(), i.funct3()));
               instr = Opcodes.SYSTEM | (0x80) | (nodeIdx << 8);

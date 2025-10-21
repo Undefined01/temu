@@ -161,7 +161,7 @@ public final class FbDev {
     @ExportMessage
     public int write(long address, byte[] data, int length) {
       System.arraycopy(data, 0, vmem, (int) address, length);
-      for (int i = 3; i < length; i+=4) {
+      for (int i = 3; i < length; i += 4) {
         vmem[(int) address + i] |= 0xFF;
       }
       return length;

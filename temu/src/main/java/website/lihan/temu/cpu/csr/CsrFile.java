@@ -1,8 +1,6 @@
 package website.lihan.temu.cpu.csr;
 
 import static website.lihan.temu.cpu.csr.CsrId.*;
-import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
-import website.lihan.temu.cpu.IllegalInstructionException;
 
 public class CsrFile {
   public final MStatus status = new MStatus();

@@ -7,8 +7,8 @@ import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
-import website.lihan.temu.device.Keyboard;
 import website.lihan.temu.device.FbDev;
+import website.lihan.temu.device.Keyboard;
 
 public class EmulatorGUI {
   private static boolean started = false;

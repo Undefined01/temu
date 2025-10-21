@@ -2,13 +2,11 @@ package website.lihan.temu.cpu;
 
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
-import com.oracle.truffle.api.nodes.RootNode;
 import com.oracle.truffle.api.nodes.Node.Child;
-
+import com.oracle.truffle.api.nodes.RootNode;
 import website.lihan.temu.Rv64BytecodeLanguage;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.Utils;
-import website.lihan.temu.cpu.csr.CsrId;
 import website.lihan.temu.cpu.instr.SystemOp;
 import website.lihan.temu.device.RTC;
 
@@ -16,8 +14,7 @@ public class Rv64ExecutionRootNode extends RootNode {
   Rv64BytecodeLanguage language;
   Rv64Context context;
 
-  @Child
-  private IndirectCallNode callNode;
+  @Child private IndirectCallNode callNode;
 
   public Rv64ExecutionRootNode(Rv64BytecodeLanguage language) {
     super(language);

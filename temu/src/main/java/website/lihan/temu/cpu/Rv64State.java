@@ -2,10 +2,7 @@ package website.lihan.temu.cpu;
 
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
-
-import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.csr.CsrFile;
-import website.lihan.temu.cpu.csr.CsrLibrary;
 
 public final class Rv64State {
   @CompilationFinal(dimensions = 0)
@@ -14,8 +11,7 @@ public final class Rv64State {
   private final CsrFile csrs = new CsrFile();
 
   // public long pc = 0x80000000L;
-  @CompilationFinal
-  private int privilegeLevel = 1;
+  @CompilationFinal private int privilegeLevel = 1;
 
   public long getReg(int reg) {
     if (reg == 0) {

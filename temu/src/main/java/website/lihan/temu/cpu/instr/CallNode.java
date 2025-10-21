@@ -7,7 +7,6 @@ import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.DirectCallNode;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
-import website.lihan.temu.cpu.ExecPageCache;
 import website.lihan.temu.cpu.Rv64State;
 
 public class CallNode extends Node {

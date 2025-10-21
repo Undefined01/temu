@@ -1,17 +1,9 @@
 package website.lihan.temu.cpu.instr;
 
-import static website.lihan.temu.cpu.RvUtils.BYTES;
-
-import com.oracle.truffle.api.dsl.Cached;
-import com.oracle.truffle.api.dsl.Specialization;
-import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.nodes.Node;
-
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.IllegalInstructionException;
 import website.lihan.temu.cpu.csr.CsrLibrary;
-import website.lihan.temu.device.Bus;
-import website.lihan.temu.device.DeviceLibrary;
 
 public class CsrRWNode extends Node {
   public final int csrId;
@@ -20,8 +12,7 @@ public class CsrRWNode extends Node {
   public final int funct3;
 
   private final Object csr;
-  @Child
-  private CsrLibrary csrLib;
+  @Child private CsrLibrary csrLib;
 
   public CsrRWNode(int csrId, int rs1, int rd, int funct3) {
     this.csrId = csrId;

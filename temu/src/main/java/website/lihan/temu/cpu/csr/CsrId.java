@@ -1,7 +1,5 @@
 package website.lihan.temu.cpu.csr;
 
-import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
-
 public class CsrId {
   public static final int SSTATUS = 0x100;
   public static final int SIE = 0x104;

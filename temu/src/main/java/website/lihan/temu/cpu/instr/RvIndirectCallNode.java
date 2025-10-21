@@ -1,16 +1,12 @@
 package website.lihan.temu.cpu.instr;
 
 import com.oracle.truffle.api.CallTarget;
-import com.oracle.truffle.api.CompilerDirectives;
-import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.dsl.Cached;
 import com.oracle.truffle.api.dsl.Specialization;
-import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.DirectCallNode;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
-import website.lihan.temu.cpu.ExecPageCache;
 import website.lihan.temu.cpu.Rv64State;
 
 public abstract class RvIndirectCallNode extends Node {
@@ -33,7 +29,12 @@ public abstract class RvIndirectCallNode extends Node {
   @Specialization(
       guards = {"getTargetPc(cpu) == cachedTargetPc"},
       limit = "2")
-  void doDirect(Rv64State cpu, long parentPc, @Cached("getTargetPc(cpu)") long cachedTargetPc, @Cached("getCallTarget(cpu, cachedTargetPc)") CallTarget cachedCallTarget, @Cached("create(cachedCallTarget)") DirectCallNode directCallNode) {
+  void doDirect(
+      Rv64State cpu,
+      long parentPc,
+      @Cached("getTargetPc(cpu)") long cachedTargetPc,
+      @Cached("getCallTarget(cpu, cachedTargetPc)") CallTarget cachedCallTarget,
+      @Cached("create(cachedCallTarget)") DirectCallNode directCallNode) {
     cpu.setReg(rd, returnPc); // ra
     directCallNode.call(0, parentPc);
   }

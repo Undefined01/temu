@@ -1,7 +1,6 @@
 package website.lihan.temu.cpu;
 
 import com.oracle.truffle.api.CompilerDirectives;
-import com.oracle.truffle.api.memory.ByteArraySupport;
 import com.oracle.truffle.api.nodes.Node;
 import org.graalvm.collections.EconomicMap;
 import website.lihan.temu.Rv64Context;
@@ -10,7 +9,7 @@ public class ExecPageCache {
   //   public static final int PAGE_SIZE = 4 * 1024;
   // public static final long PAGE_ADDR_MASK = 0xFFFFFFFFFFFFF000L;
   public static final long PAGE_ADDR_MASK = 0xFFFFFFFFFF000000L;
-  public static final int PAGE_SIZE = (int)~PAGE_ADDR_MASK + 1;
+  public static final int PAGE_SIZE = (int) ~PAGE_ADDR_MASK + 1;
 
   private Rv64Context context;
 
