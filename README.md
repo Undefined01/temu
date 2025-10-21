@@ -1,7 +1,7 @@
 # TEMU
 
 
-To build this project, ensure you have [GraalVM](https://www.graalvm.org/) 21 installed and set up on your system. You can then use the following command to build the project:
+To build this project, ensure you have [GraalVM](https://www.graalvm.org/) 25 installed and set up on your system. You can then use the following command to build the project:
 
 ```
 ./gradlew installDist
@@ -56,30 +56,30 @@ temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/corema
 You can specify the number of iterations by setting the `ITERATIONS` variable:
 
 ```
-make -C temu/src/test/abstract-machine coremark ITERATIONS=10000
+make -C temu/src/test/abstract-machine coremark ITERATIONS=300000
 temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/coremark/build/coremark-10000-iteration-riscv64-nemu.bin
 ```
 
 Result:
 ```
-Running CoreMark for 10000 iterations
+Running CoreMark for 300000 iterations
 2K performance run parameters for coremark.
 CoreMark Size    : 666
-Total time (ms)  : 6258
-Iterations       : 10000
+Total time (ms)  : 30021
+Iterations       : 300000
 Compiler version : GCC10.2.1 20210110
 seedcrc          : 0xe9f5
 [0]crclist       : 0xe714
 [0]crcmatrix     : 0x1fd7
 [0]crcstate      : 0x8e3a
-[0]crcfinal      : 0x988c
-Finished in 6258 ms.
+[0]crcfinal      : 0xcc42
+Finished in 30021 ms.
 ==================================================
-CoreMark Iterations/Sec 1597954.62
+CoreMark Iterations/Sec 9993004.90
 website.lihan.temu.cpu.HaltException: Halt at 80002794 with code 0
 ```
 
-Compared to NEMU:
+Compared to NEMU (100x faster):
 ```
 Welcome to riscv32-NEMU!
 For help, type "help"
@@ -103,6 +103,24 @@ CoreMark Iterations/Sec 98144.10
 [src/cpu/cpu-exec.c:117 statistic] simulation frequency = 30,262,184 inst/s
 ```
 
+Compared to native (3x slower):
+```
+Running CoreMark for 300000 iterations
+2K performance run parameters for coremark.
+CoreMark Size    : 666
+Total time (ms)  : 10101
+Iterations       : 300000
+Compiler version : GCC10.2.1 20210110
+seedcrc          : 0xe9f5
+[0]crclist       : 0xe714
+[0]crcmatrix     : 0x1fd7
+[0]crcstate      : 0x8e3a
+[0]crcfinal      : 0xcc42
+Finished in 10101 ms.
+==================================================
+CoreMark Iterations/Sec 29700029.70
+```
+
 **microbench**
 
 ```
@@ -116,29 +134,29 @@ Result:
 Empty mainargs. Use "ref" by default
 ======= Running MicroBench [input *ref*] =======
 [qsort] Quick sort: * Passed.
-  min time: 166 ms [3080]
+  min time: 274 ms [1866]
 [queen] Queen placement: * Passed.
-  min time: 350 ms [1344]
+  min time: 133 ms [3539]
 [bf] Brainf**k interpreter: * Passed.
-  min time: 2112 ms [1120]
+  min time: 2325 ms [1018]
 [fib] Fibonacci number: * Passed.
-  min time: 783 ms [3616]
+  min time: 511 ms [5541]
 [sieve] Eratosthenes sieve: * Passed.
-  min time: 421 ms [9349]
+  min time: 198 ms [19879]
 [15pz] A* 15-puzzle search: * Passed.
-  min time: 491 ms [913]
+  min time: 258 ms [1738]
 [dinic] Dinic's maxflow algorithm: * Passed.
-  min time: 861 ms [1263]
+  min time: 388 ms [2804]
 [lzip] Lzip compression: * Passed.
-  min time: 477 ms [1591]
+  min time: 256 ms [2966]
 [ssort] Suffix sort: * Passed.
-  min time: 269 ms [1674]
+  min time: 199 ms [2263]
 [md5] MD5 digest: * Passed.
-  min time: 565 ms [3051]
+  min time: 219 ms [7871]
 ==================================================
-MicroBench PASS        2700 Marks
+MicroBench PASS        4948 Marks
                    vs. 100000 Marks (i7-7700K @ 4.20GHz)
-Total time: 9563 ms
+Total time: 5360 ms
 website.lihan.temu.cpu.HaltException: Halt at 80005460 with code 0
 ```
 
@@ -176,6 +194,36 @@ Total time: 59347 ms
 [src/cpu/cpu-exec.c:114 statistic] host time spent = 59,348,084 us
 [src/cpu/cpu-exec.c:115 statistic] total guest instructions = 1,872,537,107
 [src/cpu/cpu-exec.c:117 statistic] simulation frequency = 31,551,770 inst/s
+```
+
+Compared to native:
+```
+Empty mainargs. Use "ref" by default
+======= Running MicroBench [input *ref*] =======
+[qsort] Quick sort: * Passed.
+  min time: 6 ms [85233]
+[queen] Queen placement: * Passed.
+  min time: 6 ms [78450]
+[bf] Brainf**k interpreter: * Passed.
+  min time: 35 ms [67637]
+[fib] Fibonacci number: * Passed.
+  min time: 27 ms [104881]
+[sieve] Eratosthenes sieve: * Passed.
+  min time: 39 ms [100925]
+[15pz] A* 15-puzzle search: * Passed.
+  min time: 6 ms [74766]
+[dinic] Dinic's maxflow algorithm: * Passed.
+  min time: 8 ms [136025]
+[lzip] Lzip compression: * Passed.
+  min time: 10 ms [75930]
+[ssort] Suffix sort: * Passed.
+  min time: 5 ms [90080]
+[md5] MD5 digest: * Passed.
+  min time: 18 ms [95772]
+==================================================
+MicroBench PASS        90969 Marks
+                   vs. 100000 Marks (i7-7700K @ 4.20GHz)
+Total time: 207 ms
 ```
 
 **fceux**

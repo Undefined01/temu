@@ -7,6 +7,7 @@ import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.DirectCallNode;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.cpu.ExecPageCache;
 import website.lihan.temu.cpu.Rv64State;
 
 public class CallNode extends Node {
@@ -27,12 +28,12 @@ public class CallNode extends Node {
     if (directCallNode == null) {
       CompilerDirectives.transferToInterpreterAndInvalidate();
       var context = Rv64Context.get(this);
-      var targetNode = context.getExecPageCache().getByEntryPoint(targetPc);
+      var targetNode = context.getExecPageCache().getByEntryPoint(targetPc, cpu);
       this.target = targetNode.getCallTarget();
       this.directCallNode = DirectCallNode.create(target);
     }
     cpu.setReg(1, returnPc); // ra
-    directCallNode.call(cpu, returnPc);
+    directCallNode.call((int)(targetPc & ~ExecPageCache.PAGE_ADDR_MASK), returnPc);
   }
 
   public static boolean jalrIsReturn(VirtualFrame frame, long nextPc) {

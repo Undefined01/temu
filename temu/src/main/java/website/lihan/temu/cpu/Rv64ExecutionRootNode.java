@@ -37,9 +37,10 @@ public class Rv64ExecutionRootNode extends RootNode {
         //   entryPoints.put(pageAddr, page);
         // }
         // var subAddr = (int)(pc & ~PAGE_ADDR_MASK);
-        var rootNode = context.getExecPageCache().getByEntryPoint(cpu.pc);
-        callNode.call(rootNode.getCallTarget(), cpu);
+        var rootNode = context.getExecPageCache().getByEntryPoint(cpu.pc, cpu);
+        callNode.call(rootNode.getCallTarget(), (int)(cpu.pc & ~ExecPageCache.PAGE_ADDR_MASK));
       } catch (JumpException e) {
+        // Utils.printf("JumpException to 0x%08x\n", e.getTargetPc());
         cpu.pc = e.getTargetPc();
       } catch (InterruptException e) {
         SystemOp.doInterrupt(cpu, e);

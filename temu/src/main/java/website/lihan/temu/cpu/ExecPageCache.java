@@ -16,7 +16,7 @@ public class ExecPageCache {
 
   //   private final EconomicMap<Long, EconomicMap<Integer, Rv64BytecodeRootNode>> cache =
   // EconomicMap.create();
-  private final EconomicMap<Integer, Rv64BytecodeRootNode> rootCache = EconomicMap.create();
+  private final EconomicMap<Long, Rv64BytecodeRootNode> rootCache = EconomicMap.create();
   private final EconomicMap<Long, Node[]> nodeCache = EconomicMap.create();
   private final EconomicMap<Long, byte[]> bcCache = EconomicMap.create();
 
@@ -24,10 +24,10 @@ public class ExecPageCache {
     this.context = context;
   }
 
-  public Rv64BytecodeRootNode getByEntryPoint(long entryAddr) {
+  public Rv64BytecodeRootNode getByEntryPoint(long entryAddr, Rv64State cpu) {
     var pageAddr = entryAddr & PAGE_ADDR_MASK;
     var subAddr = (int) (entryAddr - pageAddr);
-    var rootNode = rootCache.get(subAddr);
+    var rootNode = rootCache.get(entryAddr);
     if (rootNode == null) {
       CompilerDirectives.transferToInterpreterAndInvalidate();
       var bc = bcCache.get(pageAddr);
@@ -36,9 +36,9 @@ public class ExecPageCache {
         context.getBus().executeRead(pageAddr, bc, PAGE_SIZE);
         bcCache.put(pageAddr, bc);
       }
-      var node = new Rv64BytecodeNode(pageAddr, bc, subAddr);
+      var node = new Rv64BytecodeNode(pageAddr, bc, subAddr, cpu);
       rootNode = new Rv64BytecodeRootNode(context.getLanguage(), node);
-      rootCache.put(subAddr, rootNode);
+      rootCache.put(entryAddr, rootNode);
     }
     return rootNode;
   }
