@@ -1,18 +1,20 @@
-From 1eb97f814e8c87a36bdace689a098ff2ba91af54 Mon Sep 17 00:00:00 2001
+From a11df42ae18acb00b667d2fa63ea3af4a97c9a9d Mon Sep 17 00:00:00 2001
 From: Undefined01 <amoscr@163.com>
 Date: Tue, 21 Oct 2025 21:03:59 +0800
 Subject: [PATCH] Port for TEMU
 
 ---
  bsp/qemu-virt64-riscv/.config                 | 143 ++-------
+ bsp/qemu-virt64-riscv/1.nix                   |  47 +++
  bsp/qemu-virt64-riscv/Kconfig                 |   4 +-
+ bsp/qemu-virt64-riscv/SConstruct              |   4 +
  .../applications/thead-sample.c               |  85 +++++
  bsp/qemu-virt64-riscv/driver/board.c          |   2 +-
  bsp/qemu-virt64-riscv/driver/drv_uart.c       | 294 ++++++++++++++----
  bsp/qemu-virt64-riscv/link.lds                |   4 +-
  bsp/qemu-virt64-riscv/rtconfig.h              |  99 +-----
- bsp/qemu-virt64-riscv/rtconfig.py             |   7 +-
- bsp/qemu-virt64-riscv/shell.nix               |  32 ++
+ bsp/qemu-virt64-riscv/rtconfig.py             |   5 +-
+ bsp/qemu-virt64-riscv/shell.nix               |  20 ++
  .../dfs/dfs_v2/filesystems/devfs/devfs.c      |   1 +
  components/finsh/shell.c                      |   5 +-
  .../libc/compilers/common/include/sys/time.h  |   1 +
@@ -21,10 +23,11 @@ Subject: [PATCH] Port for TEMU
  libcpu/risc-v/common64/SConscript             |   2 +
  libcpu/risc-v/common64/backtrace.c            |   6 +
  libcpu/risc-v/common64/mmu.h                  |   2 +
- libcpu/risc-v/common64/sbi.c                  |  16 +-
+ libcpu/risc-v/common64/sbi.c                  |  19 +-
  libcpu/risc-v/common64/startup_gcc.S          |   2 +-
  libcpu/risc-v/common64/trap.c                 |   3 +
- 20 files changed, 414 insertions(+), 301 deletions(-)
+ 22 files changed, 453 insertions(+), 302 deletions(-)
+ create mode 100644 bsp/qemu-virt64-riscv/1.nix
  create mode 100644 bsp/qemu-virt64-riscv/applications/thead-sample.c
  create mode 100644 bsp/qemu-virt64-riscv/shell.nix
 
@@ -262,6 +265,59 @@ index cc9158f1..3eecc9b6 100644
  # CONFIG_ENABLE_VECTOR is not set
  # CONFIG_RT_USING_USERSPACE_32BIT_LIMIT is not set
  CONFIG___STACKSIZE__=16384
+diff --git a/bsp/qemu-virt64-riscv/1.nix b/bsp/qemu-virt64-riscv/1.nix
+new file mode 100644
+index 00000000..c783c5f7
+--- /dev/null
++++ b/bsp/qemu-virt64-riscv/1.nix
+@@ -0,0 +1,47 @@
++{ pkgs ? import <nixpkgs> {} }:
++
++let
++  lib = pkgs.lib;
++  riscvPkgs = pkgs.pkgsCross.riscv64-embedded;
++  musl = ((riscvPkgs.musl.override { linuxHeaders = ""; }).overrideAttrs (old: {
++    configureFlags = old.configureFlags ++ [ "--disable-shared" "--enable-static" ];
++    CFLAGS = old.CFLAGS ++ ["-march=rv64ima_zicsr" "-mabi=lp64" "-mcmodel=medany"];
++    # https://github.com/NixOS/nixpkgs/blob/master/pkgs/by-name/mu/musl/package.nix#L132
++    postInstall = ''
++      # (impure) cc wrapper around musl for interactive usuage
++      for i in musl-gcc musl-clang ld.musl-clang; do
++        moveToOutput bin/$i $dev
++      done
++      moveToOutput lib/musl-gcc.specs $dev
++      substituteInPlace $dev/bin/musl-gcc \
++        --replace $out/lib/musl-gcc.specs $dev/lib/musl-gcc.specs
++    '';
++    outputs = [
++      "out"
++      "dev"
++    ];
++    meta.platforms = old.meta.platforms ++ [ "riscv64-none" ];
++  }));
++  newlib = (riscvPkgs.newlib-nano.overrideAttrs (old: {
++    CFLAGS = (pkgs.lib.optionals (old ? CFLAGS) old.CFLAGS) ++ ["-march=rv64ima_zicsr" "-mabi=lp64" "-mcmodel=medany"];
++  }));
++  rt = (riscvPkgs.llvmPackages.compiler-rt-no-libc.overrideAttrs (old: {
++    CFLAGS = (pkgs.lib.optionals (old ? CFLAGS) old.CFLAGS) ++ ["-march=rv64ima_zicsr" "-mabi=lp64" "-mcmodel=medany"];
++  }));
++in 
++pkgs.mkShell {
++  nativeBuildInputs = with pkgs; [
++    riscvPkgs.buildPackages.gcc
++    (python3.withPackages (ps: with ps; [scons kconfiglib]))
++    scons
++    musl
++    rt
++  ];
++
++  LIBC = musl;
++  RT = rt;
++
++  RTT_CC_PREFIX = "riscv64-none-elf-";
++  NIX_LDFLAGS = [ "-L${musl.out}/lib" "-L${rt.out}/lib/baremetal" ];
++  NIX_LDFLAGS_AFTER = [ "-lc" "-lclang_rt.builtins-riscv64" ];
++}
 diff --git a/bsp/qemu-virt64-riscv/Kconfig b/bsp/qemu-virt64-riscv/Kconfig
 index 54475350..ddc31fe8 100644
 --- a/bsp/qemu-virt64-riscv/Kconfig
@@ -277,6 +333,21 @@ index 54475350..ddc31fe8 100644
      default y
  
  config ENABLE_FPU
+diff --git a/bsp/qemu-virt64-riscv/SConstruct b/bsp/qemu-virt64-riscv/SConstruct
+index 3387d0e1..c603c533 100644
+--- a/bsp/qemu-virt64-riscv/SConstruct
++++ b/bsp/qemu-virt64-riscv/SConstruct
+@@ -19,6 +19,10 @@ env = Environment(tools = ['mingw'],
+ env.PrependENVPath('PATH', rtconfig.EXEC_PATH)
+ env['ASCOM'] = env['ASPPCOM']
+ 
++# Passthrough all NIX* environment variables to the build environment
++nix_env_vars = {k: v for k, v in os.environ.items() if k.startswith('NIX_')}
++env.Prepend(ENV = nix_env_vars)
++
+ Export('RTT_ROOT')
+ Export('rtconfig')
+ rtconfig.CPU='virt64'
 diff --git a/bsp/qemu-virt64-riscv/applications/thead-sample.c b/bsp/qemu-virt64-riscv/applications/thead-sample.c
 new file mode 100644
 index 00000000..71a6a53c
@@ -911,25 +982,23 @@ index f92d3b22..50a2be3b 100644
  
  #endif
 diff --git a/bsp/qemu-virt64-riscv/rtconfig.py b/bsp/qemu-virt64-riscv/rtconfig.py
-index 09d530af..87050999 100644
+index 09d530af..51fbf2d7 100644
 --- a/bsp/qemu-virt64-riscv/rtconfig.py
 +++ b/bsp/qemu-virt64-riscv/rtconfig.py
-@@ -32,10 +32,12 @@ if PLATFORM == 'gcc':
+@@ -32,10 +32,10 @@ if PLATFORM == 'gcc':
      OBJDUMP = PREFIX + 'objdump'
      OBJCPY  = PREFIX + 'objcopy'
  
 -    DEVICE  = ' -mcmodel=medany -march=rv64imafdc -mabi=lp64 '
 +    DEVICE  = ' -mcmodel=medany -march=rv64im_zicsr -mabi=lp64 '
      CFLAGS  = DEVICE + '-ffreestanding -flax-vector-conversions -Wno-cpp -fno-common -ffunction-sections -fdata-sections -fstrict-volatile-bitfields -fdiagnostics-color=always'
-+    # CFLAGS  = DEVICE + '-ffreestanding -flax-vector-conversions -Wno-cpp -fno-common -ffunction-sections -fdata-sections -fstrict-volatile-bitfields -fdiagnostics-color=always -D_POSIX_C_SOURCE=200809L -DO_TMPFILE=0x800000'
      AFLAGS  = ' -c' + DEVICE + ' -x assembler-with-cpp -D__ASSEMBLY__ '
 -    LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lsupc++ -lgcc -static'
 +    LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lsupc++ -nodefaultlibs -static'
-+    # LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lsupc++ -nodefaultlibs -L/nix/store/4pdr3im6dq14jbnamfkw42mapvisbrbg-newlib-riscv64-none-elf-4.5.0.20241231/riscv64-none-elf/lib/ -lc -static'
      CPATH   = ''
      LPATH   = ''
  
-@@ -47,5 +49,6 @@ if PLATFORM == 'gcc':
+@@ -47,5 +47,6 @@ if PLATFORM == 'gcc':
  
      CXXFLAGS = CFLAGS
  
@@ -938,10 +1007,10 @@ index 09d530af..87050999 100644
  POST_ACTION = OBJCPY + ' -O binary $TARGET rtthread.bin\n' + SIZE + ' $TARGET \n'
 diff --git a/bsp/qemu-virt64-riscv/shell.nix b/bsp/qemu-virt64-riscv/shell.nix
 new file mode 100644
-index 00000000..1b7fdd76
+index 00000000..b2bd3184
 --- /dev/null
 +++ b/bsp/qemu-virt64-riscv/shell.nix
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,20 @@
 +{ pkgs ? import <nixpkgs> {} }:
 +
 +let
@@ -954,24 +1023,12 @@ index 00000000..1b7fdd76
 +      };
 +    };
 +  };
-+  
-+  # riscvPkgs = pkgs.pkgsCross.riscv64-musl.extend (final: prev: {
-+  #   musl = prev.musl.overrideAttrs (old: {
-+  #     NIX_CFLAGS_COMPILE = "-march=rv64ima_zicsr -mabi=lp64 -mcmodel=medany";
-+  #     configureFlags = old.configureFlags ++ ["LIBS=-lgcc"];
-+  #   });
-+    # gcc-unwrapped = prev.gcc-unwrapped.overrideAttrs (old: {
-+    #   configureFlags = old.configureFlags ++ pkgs.lib.optionals (old.stdenv.targetPlatform.isRiscv) ["--with-arch=rv64ima_zicsr" "--with-abi=lp64"];
-+    # });
-+  # });
-+  # riscvPkgs = pkgs.pkgsCross.riscv64-embedded;
 +in 
 +pkgs.mkShell {
 +  buildInputs = with pkgs; [
 +    riscvPkgs.buildPackages.gcc
 +    (python3.withPackages (ps: with ps; [scons kconfiglib]))
 +    scons
-+    # (riscvPkgs.newlib-nano.overrideDerivation (old: { NIX_CFLAGS_COMPILE = "-march=rv64im_zicsr -mabi=lp64 -mcmodel=medany"; }))
 +  ];
 +}
 diff --git a/components/dfs/dfs_v2/filesystems/devfs/devfs.c b/components/dfs/dfs_v2/filesystems/devfs/devfs.c
@@ -1103,7 +1160,7 @@ index cb9ae45f..7afc4ba1 100644
  
  /* RAM, Flash, or ROM */
 diff --git a/libcpu/risc-v/common64/sbi.c b/libcpu/risc-v/common64/sbi.c
-index b2b1e8e7..ea68c747 100644
+index b2b1e8e7..ff14423d 100644
 --- a/libcpu/risc-v/common64/sbi.c
 +++ b/libcpu/risc-v/common64/sbi.c
 @@ -51,6 +51,9 @@ static bool has_time_extension = false;
@@ -1136,6 +1193,15 @@ index b2b1e8e7..ea68c747 100644
  }
  
  void sbi_send_ipi(const unsigned long *hart_mask)
+@@ -259,6 +251,7 @@ void rt_hw_console_output(const char *str)
+ {
+     while (*str)
+     {
+-        sbi_console_putchar(*str++);
++        // sbi_console_putchar(*str++);
++        *(char *)0xa00003f8 = *str++;
+     }
+ }
 diff --git a/libcpu/risc-v/common64/startup_gcc.S b/libcpu/risc-v/common64/startup_gcc.S
 index 184b48a1..ed9670fe 100644
 --- a/libcpu/risc-v/common64/startup_gcc.S

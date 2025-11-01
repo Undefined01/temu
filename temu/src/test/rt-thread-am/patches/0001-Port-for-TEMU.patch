@@ -1,18 +1,22 @@
-From e1fd0a0c763b8a481f220f9a8b039591be8de281 Mon Sep 17 00:00:00 2001
+From 5a75ed67a042feb4b995f00b761268094c96713a Mon Sep 17 00:00:00 2001
 From: Undefined01 <amoscr@163.com>
 Date: Mon, 22 Sep 2025 23:05:08 +0800
 Subject: [PATCH] Port for TEMU
 
 ---
- bsp/abstract-machine/Makefile             |  2 +-
- bsp/abstract-machine/integrate-am-apps.py | 32 ++++++++--------
- bsp/abstract-machine/rtconfig.py          |  2 +-
- bsp/abstract-machine/src/context.c        | 46 ++++++++++++++++++++---
- bsp/abstract-machine/src/init.c           | 10 ++---
- bsp/abstract-machine/src/interrupt.c      |  4 +-
- bsp/abstract-machine/src/uart.c           |  2 +-
- components/finsh/msh.c                    |  4 ++
- 8 files changed, 70 insertions(+), 32 deletions(-)
+ bsp/abstract-machine/Makefile             |   2 +-
+ bsp/abstract-machine/integrate-am-apps.py |  32 ++--
+ bsp/abstract-machine/rtconfig.py          |   2 +-
+ bsp/abstract-machine/src/context.c        |  81 ++++++++-
+ bsp/abstract-machine/src/hello.c          |   6 +
+ bsp/abstract-machine/src/init.c           |  10 +-
+ bsp/abstract-machine/src/interrupt.c      |  11 +-
+ bsp/abstract-machine/src/thread-sample.c  |  85 +++++++++
+ bsp/abstract-machine/src/uart.c           | 204 +++++++++++++++++++++-
+ components/finsh/msh.c                    |   4 +
+ include/rtdebug.h                         |   6 +-
+ 11 files changed, 403 insertions(+), 40 deletions(-)
+ create mode 100644 bsp/abstract-machine/src/thread-sample.c
 
 diff --git a/bsp/abstract-machine/Makefile b/bsp/abstract-machine/Makefile
 index 8d70f31..670456e 100644
@@ -121,27 +125,45 @@ index db68dba..7d34e62 100644
      AFLAGS  = ' -c' + DEVICE + ' -x assembler-with-cpp -D__ASSEMBLY__ '
      LFLAGS  = DEVICE + ' -nostartfiles -Wl,--gc-sections,-Map=rtthread.map,-cref,-u,_start -T link.lds' + ' -lgcc -static'
 diff --git a/bsp/abstract-machine/src/context.c b/bsp/abstract-machine/src/context.c
-index ee38829..e10f737 100644
+index ee38829..3f794ab 100644
 --- a/bsp/abstract-machine/src/context.c
 +++ b/bsp/abstract-machine/src/context.c
-@@ -2,30 +2,64 @@
+@@ -2,30 +2,97 @@
  #include <klib.h>
  #include <rtthread.h>
  
 -static Context* ev_handler(Event e, Context *c) {
-+static _Context **switch_from = NULL;
-+static _Context **switch_to = NULL;
++rt_uint32_t rt_thread_switch_interrupt_flag = 0;
++rt_uint32_t rt_interrupt_from_thread = 0;
++rt_uint32_t rt_interrupt_to_thread = 0;
++
++static long *const mtime = (void *)0xa0000048;
++static long *const mtimecmp = (void *)(0xa0000048 + 8);
 +
 +static _Context* ev_handler(_Event e, _Context *c) {
    switch (e.event) {
 +    case _EVENT_YIELD: {
-+      if (switch_to) {
-+        if (switch_from) {
-+          *switch_from = c;
++      if (rt_thread_switch_interrupt_flag != 0) {
++        if (rt_interrupt_to_thread != 0) {
++          if (rt_interrupt_from_thread != 0) {
++            *(_Context **)(rt_base_t)rt_interrupt_from_thread = c;
++          }
++          c = *(_Context **)(rt_base_t)rt_interrupt_to_thread;
++          rt_interrupt_from_thread = rt_interrupt_to_thread = 0;
 +        }
-+        c = *switch_to;
-+        switch_from = switch_to = NULL;
 +      }
++      break;
++    }
++    case _EVENT_IRQ_TIMER: {
++      /* enter interrupt */
++      rt_interrupt_enter();
++
++      rt_tick_increase();
++
++      /* leave interrupt */
++      rt_interrupt_leave();
++
++      *mtimecmp = *mtime + 1000000; // 10ms
 +      break;
 +    }
      default: printf("Unhandled event ID = %d\n", e.event); assert(0);
@@ -152,33 +174,49 @@ index ee38829..e10f737 100644
  void __am_cte_init() {
 -  cte_init(ev_handler);
 +  _cte_init(ev_handler);
++  *mtimecmp = *mtime + 10000; // 10ms
  }
  
  void rt_hw_context_switch_to(rt_ubase_t to) {
 -  assert(0);
-+  switch_to = (_Context **)to;
++  rt_interrupt_from_thread = 0;
++  rt_interrupt_to_thread = to;
++  rt_thread_switch_interrupt_flag = 1;
++
 +  _yield();
  }
  
  void rt_hw_context_switch(rt_ubase_t from, rt_ubase_t to) {
 -  assert(0);
-+  switch_from = (_Context **)from;
-+  switch_to   = (_Context **)to;
++  if (rt_thread_switch_interrupt_flag == 0) {
++    rt_thread_switch_interrupt_flag = 1;
++    rt_interrupt_from_thread = from;
++  }
++  
++  rt_interrupt_to_thread = to;
++
 +  _yield();
  }
  
  void rt_hw_context_switch_interrupt(void *context, rt_ubase_t from, rt_ubase_t to, struct rt_thread *to_thread) {
-   assert(0);
- }
- 
+-  assert(0);
++  if (rt_thread_switch_interrupt_flag == 0)
++    rt_interrupt_from_thread = from;
++
++  rt_interrupt_to_thread = to;
++  rt_thread_switch_interrupt_flag = 1;
++
++  _yield();
++}
++
 +void entry_wrapper(void **args) {
 +  void (*tentry)(void *) = args[0];
 +  void *param = args[1];
 +  void (*texit)(void) = args[2];
 +  tentry(param);
 +  texit();
-+}
-+
+ }
+ 
  rt_uint8_t *rt_hw_stack_init(void *tentry, void *parameter, rt_uint8_t *stack_addr, void *texit) {
 -  assert(0);
 -  return NULL;
@@ -195,6 +233,23 @@ index ee38829..e10f737 100644
 +  _Context *context = _kcontext((_Area) { stk - RT_MAIN_THREAD_STACK_SIZE, stk }, (void (*)(void *))entry_wrapper, args);
 +  return (rt_uint8_t *)context;
  }
+diff --git a/bsp/abstract-machine/src/hello.c b/bsp/abstract-machine/src/hello.c
+index cda4015..1aa9505 100644
+--- a/bsp/abstract-machine/src/hello.c
++++ b/bsp/abstract-machine/src/hello.c
+@@ -3,6 +3,12 @@
+ 
+ static int hello() {
+   printf("Hello RISC-V!\n");
++
++  for (int i = 0; i < 5; i++) {
++    rt_thread_delay(1);
++    printf("Hello RT-Thread %d!\n", i);
++  }
++
+   return 0;
+ }
+ INIT_ENV_EXPORT(hello);
 diff --git a/bsp/abstract-machine/src/init.c b/bsp/abstract-machine/src/init.c
 index 93e2711..3fb99dc 100644
 --- a/bsp/abstract-machine/src/init.c
@@ -228,26 +283,146 @@ index 93e2711..3fb99dc 100644
    extern void __am_cte_init();
    __am_cte_init();
 diff --git a/bsp/abstract-machine/src/interrupt.c b/bsp/abstract-machine/src/interrupt.c
-index 1652c5d..360bd62 100644
+index 1652c5d..09aa1f2 100644
 --- a/bsp/abstract-machine/src/interrupt.c
 +++ b/bsp/abstract-machine/src/interrupt.c
-@@ -2,9 +2,9 @@
+@@ -1,10 +1,13 @@
+ #include <am.h>
  #include <klib.h>
++#include <rtthread.h>
  
- void rt_hw_interrupt_enable() {
+-void rt_hw_interrupt_enable() {
 -  iset(1);
-+  _intr_write(1);
++void rt_hw_interrupt_enable(rt_base_t level) {
++  _intr_write(level == 0);
  }
  
- void rt_hw_interrupt_disable() {
+-void rt_hw_interrupt_disable() {
 -  iset(0);
++rt_base_t rt_hw_interrupt_disable() {
++  int interrupt_enabled = _intr_read();
 +  _intr_write(0);
++  return interrupt_enabled ? 0 : 1;
  }
+diff --git a/bsp/abstract-machine/src/thread-sample.c b/bsp/abstract-machine/src/thread-sample.c
+new file mode 100644
+index 0000000..8900291
+--- /dev/null
++++ b/bsp/abstract-machine/src/thread-sample.c
+@@ -0,0 +1,85 @@
++/* 
++ * Copyright (c) 2006-2018, RT-Thread Development Team 
++ * 
++ * SPDX-License-Identifier: Apache-2.0 
++ * 
++ * Change Logs: 
++ * Date           Author       Notes 
++ * 2018-08-24     yangjie      the first version 
++ */ 
++
++/*
++ * 程序清单：创建、初始化/脱离线程
++ *
++ * 这个例子会创建两个线程，一个动态线程，一个静态线程。
++ * 静态线程在运行完毕后自动被系统脱离，动态线程一直打印计数。
++ */
++#include <rtthread.h>
++
++#define THREAD_PRIORITY         25
++#define THREAD_STACK_SIZE       512
++#define THREAD_TIMESLICE        5
++
++static rt_thread_t tid1 = RT_NULL;
++
++/* 线程1的入口函数 */
++static void thread1_entry(void *parameter)
++{
++    rt_uint32_t count = 0;
++
++    while (1)
++    {
++        /* 线程1采用低优先级运行，一直打印计数值 */
++        rt_kprintf("thread1 count: %d\n", count ++);
++        rt_thread_mdelay(500);
++    }
++}
++
++rt_align(RT_ALIGN_SIZE)
++static char thread2_stack[1024];
++static struct rt_thread thread2;
++
++/* 线程2入口 */
++static void thread2_entry(void *param)
++{
++    rt_uint32_t count = 0;
++
++    /* 线程2拥有较高的优先级，以抢占线程1而获得执行 */
++    for (count = 0; count < 10 ; count++)
++    {
++        /* 线程2打印计数值 */
++        rt_kprintf("thread2 count: %d\n", count);
++    }
++    rt_kprintf("thread2 exit\n");
++    /* 线程2运行结束后也将自动被系统删除
++    (线程控制块和线程栈依然在idle线程中释放) */
++}
++
++/* 线程示例 */
++int thread_sample(void)
++{
++    /* 创建线程1，名称是thread1，入口是thread1_entry*/
++    tid1 = rt_thread_create("thread1",
++                            thread1_entry, RT_NULL,
++                            THREAD_STACK_SIZE,
++                            THREAD_PRIORITY, THREAD_TIMESLICE);
++    
++    /* 如果获得线程控制块，启动这个线程 */
++    if (tid1 != RT_NULL)
++        rt_thread_startup(tid1);
++
++    /* 初始化线程2，名称是thread2，入口是thread2_entry */
++    rt_thread_init(&thread2,
++                   "thread2",
++                   thread2_entry,
++                   RT_NULL,
++                   &thread2_stack[0],
++                   sizeof(thread2_stack),
++                   THREAD_PRIORITY - 1, THREAD_TIMESLICE);
++    rt_thread_startup(&thread2);
++
++    return 0;
++}
++
++/* 导出到 msh 命令列表中 */
++MSH_CMD_EXPORT(thread_sample, thread sample);
 diff --git a/bsp/abstract-machine/src/uart.c b/bsp/abstract-machine/src/uart.c
-index e4eb866..a51669f 100644
+index e4eb866..2e60c1c 100644
 --- a/bsp/abstract-machine/src/uart.c
 +++ b/bsp/abstract-machine/src/uart.c
-@@ -32,7 +32,7 @@ static rt_err_t _uart_control(struct rt_serial_device *serial, int cmd, void *ar
+@@ -10,7 +10,9 @@
+ #include <rtdevice.h>
+ #include <rtthread.h>
+ #include <am.h>
++#include <amdev.h>
+ #include <klib.h>
++#include <klib-macros.h>
+ 
+ #define UART_DEFAULT_BAUDRATE 115200
+ 
+@@ -22,6 +24,12 @@ struct device_uart {
+ static void *uart0_base = (void*)0x10000000;
+ static struct rt_serial_device serial0;
+ static struct device_uart uart0;
++static int lshift_pressed = 0;
++static int rshift_pressed = 0;
++static int lctrl_pressed = 0;
++static int rctrl_pressed = 0;
++static int sequence[32] = {0};
++static int seq_len = 0;
+ 
+ static rt_err_t _uart_configure(struct rt_serial_device *serial, struct serial_configure *cfg) {
+   return (RT_EOK);
+@@ -32,13 +40,203 @@ static rt_err_t _uart_control(struct rt_serial_device *serial, int cmd, void *ar
  }
  
  static int _uart_putc(struct rt_serial_device *serial, char c) {
@@ -256,6 +431,204 @@ index e4eb866..a51669f 100644
    return 1;
  }
  
++#define ELEVENTH_ARGUMENT(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, ...) a11
++#define COUNT_ARGUMENTS(...) ELEVENTH_ARGUMENT(dummy, ## __VA_ARGS__, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
++#define _enqueue1(key) sequence[seq_len++] = key;
++#define _enqueue2(key, ...) \
++    sequence[seq_len++] = key; \
++    _enqueue1(__VA_ARGS__);
++#define _enqueue3(key, ...) \
++    sequence[seq_len++] = key; \
++    _enqueue2(__VA_ARGS__);
++#define enqueue(...) \
++  do { \
++    if (seq_len + COUNT_ARGUMENTS(__VA_ARGS__) > sizeof(sequence) / sizeof(sequence[0])) { \
++      break; \
++    } \
++    CONCAT(_enqueue, COUNT_ARGUMENTS(__VA_ARGS__))(__VA_ARGS__); \
++  } while (0)
++
++static int key_to_ascii(int keycode, int shift_pressed, int ctrl_pressed) {
++  if (!shift_pressed && !ctrl_pressed) {
++    switch (keycode) {
++      case _KEY_A: return 'a';
++      case _KEY_B: return 'b';
++      case _KEY_C: return 'c';
++      case _KEY_D: return 'd';
++      case _KEY_E: return 'e';
++      case _KEY_F: return 'f';
++      case _KEY_G: return 'g';
++      case _KEY_H: return 'h';
++      case _KEY_I: return 'i';
++      case _KEY_J: return 'j';
++      case _KEY_K: return 'k';
++      case _KEY_L: return 'l';
++      case _KEY_M: return 'm';
++      case _KEY_N: return 'n';
++      case _KEY_O: return 'o';
++      case _KEY_P: return 'p';
++      case _KEY_Q: return 'q';
++      case _KEY_R: return 'r';
++      case _KEY_S: return 's';
++      case _KEY_T: return 't';
++      case _KEY_U: return 'u';
++      case _KEY_V: return 'v';
++      case _KEY_W: return 'w';
++      case _KEY_X: return 'x';
++      case _KEY_Y: return 'y';
++      case _KEY_Z: return 'z';
++      case _KEY_1: return '1';
++      case _KEY_2: return '2';
++      case _KEY_3: return '3';
++      case _KEY_4: return '4';
++      case _KEY_5: return '5';
++      case _KEY_6: return '6';
++      case _KEY_7: return '7';
++      case _KEY_8: return '8';
++      case _KEY_9: return '9';
++      case _KEY_0: return '0';
++      case _KEY_SPACE: return ' ';
++      case _KEY_RETURN: return '\n';
++      case _KEY_TAB: return '\t';
++      case _KEY_BACKSPACE: return '\b';
++      case _KEY_MINUS: return '-';
++      case _KEY_EQUALS: return '=';
++      case _KEY_GRAVE: return '`';
++      case _KEY_LEFTBRACKET: return '[';
++      case _KEY_RIGHTBRACKET: return ']';
++      case _KEY_BACKSLASH: return '\\';
++      case _KEY_SEMICOLON: return ';';
++      case _KEY_APOSTROPHE: return '\'';
++      case _KEY_COMMA: return ',';
++      case _KEY_PERIOD: return '.';
++      case _KEY_SLASH: return '/';
++      case _KEY_ESCAPE: return 0x1b;
++    }
++  } else if (shift_pressed && !ctrl_pressed) {
++    switch (keycode) {
++      case _KEY_A: return 'A';
++      case _KEY_B: return 'B';
++      case _KEY_C: return 'C';
++      case _KEY_D: return 'D';
++      case _KEY_E: return 'E';
++      case _KEY_F: return 'F';
++      case _KEY_G: return 'G';
++      case _KEY_H: return 'H';
++      case _KEY_I: return 'I';
++      case _KEY_J: return 'J';
++      case _KEY_K: return 'K';
++      case _KEY_L: return 'L';
++      case _KEY_M: return 'M';
++      case _KEY_N: return 'N';
++      case _KEY_O: return 'O';
++      case _KEY_P: return 'P';
++      case _KEY_Q: return 'Q';
++      case _KEY_R: return 'R';
++      case _KEY_S: return 'S';
++      case _KEY_T: return 'T';
++      case _KEY_U: return 'U';
++      case _KEY_V: return 'V';
++      case _KEY_W: return 'W';
++      case _KEY_X: return 'X';
++      case _KEY_Y: return 'Y';
++      case _KEY_Z: return 'Z';
++      case _KEY_1: return '!';
++      case _KEY_2: return '@';
++      case _KEY_3: return '#';
++      case _KEY_4: return '$';
++      case _KEY_5: return '%';
++      case _KEY_6: return '^';
++      case _KEY_7: return '&';
++      case _KEY_8: return '*';
++      case _KEY_9: return '(';
++      case _KEY_0: return ')';
++      case _KEY_MINUS: return '_';
++      case _KEY_EQUALS: return '+';
++      case _KEY_GRAVE: return '~';
++      case _KEY_LEFTBRACKET: return '{';
++      case _KEY_RIGHTBRACKET: return '}';
++      case _KEY_BACKSLASH: return '|';
++      case _KEY_SEMICOLON: return ':';
++      case _KEY_APOSTROPHE: return '"';
++      case _KEY_COMMA: return '<';
++      case _KEY_PERIOD: return '>';
++      case _KEY_SLASH: return '?';
++    }
++  } else if (!shift_pressed && ctrl_pressed) {
++    switch (keycode) {
++      case _KEY_A: return 0x01;
++      case _KEY_B: return 0x02;
++      case _KEY_C: return 0x03;
++      case _KEY_D: return 0x04;
++      case _KEY_E: return 0x05;
++      case _KEY_F: return 0x06;
++      case _KEY_G: return 0x07;
++      case _KEY_H: return 0x08;
++      case _KEY_I: return 0x09;
++      case _KEY_J: return 0x0A;
++      case _KEY_K: return 0x0B;
++      case _KEY_L: return 0x0C;
++      case _KEY_M: return 0x0D;
++      case _KEY_N: return 0x0E;
++      case _KEY_O: return 0x0F;
++      case _KEY_P: return 0x10;
++      case _KEY_Q: return 0x11;
++      case _KEY_R: return 0x12;
++      case _KEY_S: return 0x13;
++      case _KEY_T: return 0x14;
++      case _KEY_U: return 0x15;
++      case _KEY_V: return 0x16;
++      case _KEY_W: return 0x17;
++      case _KEY_X: return 0x18;
++      case _KEY_Y: return 0x19;
++      case _KEY_Z: return 0x1A;
++      case _KEY_BACKSLASH: return 0x1C;
++      case _KEY_RIGHTBRACKET: return 0x1D;
++      default: return -1;
++    }
++  }
++  switch (keycode) {
++    case _KEY_SPACE: return ' ';
++    case _KEY_RETURN: return '\n';
++    case _KEY_TAB: return '\t';
++    case _KEY_BACKSPACE: return '\b';
++    case _KEY_UP: enqueue(0x1b, '[', 'A'); break;
++    case _KEY_DOWN: enqueue(0x1b, '[', 'B'); break;
++    case _KEY_RIGHT: enqueue(0x1b, '[', 'C'); break;
++    case _KEY_LEFT: enqueue(0x1b, '[', 'D'); break;
++  }
++  return -1;
++}
++
+ static int _uart_getc(struct rt_serial_device *serial) {
+-  static const char *p = "help\ndate\nversion\nfree\nps\npwd\nls\nmemtrace\nmemcheck\nutest_list\n";
+-  return (*p != '\0' ? *(p ++) : -1);
++  int keycode = read_key();
++  if ((keycode & 0x7fff) == _KEY_LSHIFT) {
++    lshift_pressed = (keycode & 0x8000) ? 1 : 0;
++  }
++  if ((keycode & 0x7fff) == _KEY_RSHIFT) {
++    rshift_pressed = (keycode & 0x8000) ? 1 : 0;
++  }
++  if ((keycode & 0x7fff) == _KEY_LCTRL) {
++    lctrl_pressed = (keycode & 0x8000) ? 1 : 0;
++  }
++  if ((keycode & 0x7fff) == _KEY_RCTRL) {
++    rctrl_pressed = (keycode & 0x8000) ? 1 : 0;
++  }
++  if (seq_len > 0) {
++    seq_len--;
++    return sequence[seq_len];
++  }
++  if (keycode & 0x8000) {
++    return key_to_ascii(keycode & 0x7fff,
++                        lshift_pressed || rshift_pressed,
++                        lctrl_pressed || rctrl_pressed);
++  }
++  return -1;
+ }
+ 
+ const struct rt_uart_ops _uart_ops = {
 diff --git a/components/finsh/msh.c b/components/finsh/msh.c
 index a63e34d..0e6c33d 100644
 --- a/components/finsh/msh.c
@@ -271,6 +644,29 @@ index a63e34d..0e6c33d 100644
  int msh_help(int argc, char **argv)
  {
      rt_kprintf("RT-Thread shell commands:\n");
+diff --git a/include/rtdebug.h b/include/rtdebug.h
+index ac5ba6c..5ab1708 100644
+--- a/include/rtdebug.h
++++ b/include/rtdebug.h
+@@ -37,15 +37,15 @@
+ #endif
+ 
+ #ifndef RT_DEBUG_THREAD
+-#define RT_DEBUG_THREAD                0
++#define RT_DEBUG_THREAD                1
+ #endif
+ 
+ #ifndef RT_DEBUG_TIMER
+-#define RT_DEBUG_TIMER                 0
++#define RT_DEBUG_TIMER                 1
+ #endif
+ 
+ #ifndef RT_DEBUG_IRQ
+-#define RT_DEBUG_IRQ                   0
++#define RT_DEBUG_IRQ                   1
+ #endif
+ 
+ #ifndef RT_DEBUG_IPC
 -- 
 2.30.2
 

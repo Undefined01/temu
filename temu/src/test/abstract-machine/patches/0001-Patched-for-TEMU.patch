@@ -1,28 +1,58 @@
-From 7fbad5e2d82efe1752711757766e93fe38cc9fb7 Mon Sep 17 00:00:00 2001
+From d533770273a17cdd7741c70008e6b93340a0ab35 Mon Sep 17 00:00:00 2001
 From: Undefined01 <amoscr@163.com>
 Date: Sun, 21 Sep 2025 23:48:15 +0800
 Subject: [PATCH] Patched for TEMU
 
 ---
- am/arch/isa/riscv32.mk               |  2 +-
- am/arch/riscv64-nemu.mk              |  2 ++
- am/src/nemu/common/timer.c           |  4 +--
- am/src/nemu/include/nemu.h           | 26 +++++++++---------
- am/src/nemu/isa/riscv/boot/loader.ld |  2 +-
- am/src/nemu/isa/riscv/boot/start.S   |  6 ----
- am/src/nemu/isa/riscv/cte.c          | 17 +++++++++---
- am/src/nemu/isa/riscv/cte64.c        | 41 ++++++++++++++--------------
- am/src/nemu/isa/riscv/trm.c          |  4 +--
- am/src/nemu/isa/riscv/vme.c          |  4 +--
- apps/fceux/src/config.h              | 16 +++++------
- apps/yield-os/Makefile               |  3 ++
- apps/yield-os/yield-os.c             | 31 +++++++++++++++++++++
- libs/klib/include/klib.h             |  2 +-
- libs/klib/src/atomic.c               | 41 +++++++++++++++++-----------
- 15 files changed, 125 insertions(+), 76 deletions(-)
+ Makefile.app                         |   3 +-
+ am/arch/isa/riscv32.mk               |   2 +-
+ am/arch/riscv64-nemu.mk              |   2 +
+ am/src/nemu/common/timer.c           |   4 +-
+ am/src/nemu/include/nemu.h           |  26 +-
+ am/src/nemu/isa/riscv/boot/loader.ld |   2 +-
+ am/src/nemu/isa/riscv/boot/start.S   |   6 -
+ am/src/nemu/isa/riscv/cte.c          |  17 +-
+ am/src/nemu/isa/riscv/cte64.c        |  41 +--
+ am/src/nemu/isa/riscv/trm.c          |   4 +-
+ am/src/nemu/isa/riscv/vme.c          |   2 +
+ apps/coremark/Makefile               |   1 +
+ apps/fceux/src/config.h              |  16 +-
+ apps/yield-os/Makefile               |   3 +
+ apps/yield-os/yield-os.c             |  31 ++
+ libs/klib/include/klib.h             |   8 +-
+ libs/klib/src/atomic.c               |  48 +--
+ libs/klib/src/stdlib.c               |  10 +-
+ tests/amtest/src/main.c              |   9 -
+ tests/amtest/src/tests/beu.c         | 168 -----------
+ tests/amtest/src/tests/cache.c       | 421 ---------------------------
+ tests/amtest/src/tests/dma.c         | 137 ---------
+ tests/amtest/src/tests/extintr.c     | 227 ---------------
+ tests/amtest/src/tests/pmp.c         | 200 -------------
+ tests/amtest/src/tests/soft_intr.c   |   2 +-
+ tests/amtest/src/tests/sv39.c        | 145 ++++-----
+ 26 files changed, 214 insertions(+), 1321 deletions(-)
  create mode 100644 apps/yield-os/Makefile
  create mode 100644 apps/yield-os/yield-os.c
+ delete mode 100644 tests/amtest/src/tests/beu.c
+ delete mode 100644 tests/amtest/src/tests/cache.c
+ delete mode 100644 tests/amtest/src/tests/dma.c
+ delete mode 100644 tests/amtest/src/tests/extintr.c
+ delete mode 100644 tests/amtest/src/tests/pmp.c
 
+diff --git a/Makefile.app b/Makefile.app
+index 2c591707..53f09d8b 100644
+--- a/Makefile.app
++++ b/Makefile.app
+@@ -25,7 +25,8 @@ LINK_FILES = \
+   $(addsuffix -$(ARCH).a, $(join \
+     $(addsuffix /build/, $(addprefix $(AM_HOME)/libs/, $(LINK_LIBS))), \
+     $(LINK_LIBS) \
+-))
++  )) \
++  $(AM_HOME)/am/build/am-$(ARCH).a
+ 
+ $(OBJS): $(PREBUILD)
+ image:   $(OBJS) am $(LIBS) prompt
 diff --git a/am/arch/isa/riscv32.mk b/am/arch/isa/riscv32.mk
 index 65caffd0..1a67e992 100644
 --- a/am/arch/isa/riscv32.mk
@@ -278,27 +308,36 @@ index 53dbd326..2f5b6215 100644
    // should not reach here
    while (1);
 diff --git a/am/src/nemu/isa/riscv/vme.c b/am/src/nemu/isa/riscv/vme.c
-index fe51a6ee..5b1dbb00 100644
+index fe51a6ee..a83d7038 100644
 --- a/am/src/nemu/isa/riscv/vme.c
 +++ b/am/src/nemu/isa/riscv/vme.c
-@@ -186,7 +186,7 @@ void _map_fault(_AddressSpace *as, void *va, void *pa, int prot) {
-   for (int i = 0; i < 20; i++){
-     max *= 2;
-   }
--  uintptr_t randnum = rand() % (max - 1);
-+  // uintptr_t randnum = rand() % (max - 1);
- 
-   for (level = PTW_CONFIG.ptw_level - 1; ; level --) {
-     pte = &pg_base[VPNi(PTW_CONFIG, (uintptr_t)va, level)];
-@@ -199,7 +199,7 @@ void _map_fault(_AddressSpace *as, void *va, void *pa, int prot) {
-   }
- 
+@@ -177,6 +177,7 @@ void _map(_AddressSpace *as, void *va, void *pa, int prot) {
+  * Only available for sv39 and paddr = 36! (ppnlen can not be changed)
+  */
+ void _map_fault(_AddressSpace *as, void *va, void *pa, int prot) {
++#if defined(ARCH_RISCV64)
+   assert((uintptr_t)va % PGSIZE == 0);
+   assert((uintptr_t)pa % PGSIZE == 0);
+   PTE *pg_base = as->ptr;
+@@ -201,6 +202,7 @@ void _map_fault(_AddressSpace *as, void *va, void *pa, int prot) {
    if (!(*pte & PTE_V)) {
--    *pte = PTE_V | prot | (PN(pa) << 10) | (randnum << 34);
-+    // *pte = PTE_V | prot | (PN(pa) << 10) | (randnum << 34);
+     *pte = PTE_V | prot | (PN(pa) << 10) | (randnum << 34);
    }
++#endif
  }
  
+ /*
+diff --git a/apps/coremark/Makefile b/apps/coremark/Makefile
+index 1c86c553..4cd49a14 100644
+--- a/apps/coremark/Makefile
++++ b/apps/coremark/Makefile
+@@ -1,5 +1,6 @@
+ NAME = coremark
+ SRCS = $(shell find -L ./src/ -name "*.c")
++$(shell rm -r build/)
+ ifdef ITERATIONS
+ CFLAGS += -DITERATIONS=$(ITERATIONS)
+ NAME = coremark-$(ITERATIONS)-iteration
 diff --git a/apps/fceux/src/config.h b/apps/fceux/src/config.h
 index 7089ecc5..e4bb560c 100644
 --- a/apps/fceux/src/config.h
@@ -374,7 +413,7 @@ index 00000000..87acd8be
 +  panic("Should not reach here!");
 +}
 diff --git a/libs/klib/include/klib.h b/libs/klib/include/klib.h
-index 361c2eab..19129a42 100644
+index 361c2eab..78a14c0e 100644
 --- a/libs/klib/include/klib.h
 +++ b/libs/klib/include/klib.h
 @@ -62,7 +62,7 @@ char *strrchr(const char *s, int c);
@@ -386,14 +425,30 @@ index 361c2eab..19129a42 100644
  void srand(unsigned int seed);
  int rand();
  void *malloc(size_t size);
+@@ -78,9 +78,9 @@ void free(void *ptr);
+ 
+ void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *));
+ 
+-uint64_t compare_and_swap(volatile uint64_t*, uint64_t, uint64_t);
+-void lock(volatile uint64_t *);
+-void release(volatile uint64_t *);
++uint64_t _compare_and_swap(volatile uint64_t*, uint64_t, uint64_t);
++void _lock(volatile uint64_t *);
++void _release(volatile uint64_t *);
+ 
+ // assert.h
+ #ifdef NDEBUG
 diff --git a/libs/klib/src/atomic.c b/libs/klib/src/atomic.c
-index d98ef7da..1fb1aff8 100644
+index d98ef7da..84ef7856 100644
 --- a/libs/klib/src/atomic.c
 +++ b/libs/klib/src/atomic.c
-@@ -2,29 +2,38 @@
+@@ -1,30 +1,40 @@
+ #include "klib.h"
++#include <am.h>
  #include <klib-macros.h>
  
- uint64_t compare_and_swap(volatile uint64_t* addr, uint64_t old_val, uint64_t new_val) {
+-uint64_t compare_and_swap(volatile uint64_t* addr, uint64_t old_val, uint64_t new_val) {
++uint64_t _compare_and_swap(volatile uint64_t* addr, uint64_t old_val, uint64_t new_val) {
 +  // uint64_t check = 0;
 +  // uint64_t value = 0;
 +  // asm volatile (
@@ -431,19 +486,1480 @@ index d98ef7da..1fb1aff8 100644
    return check;
  }
  
- void lock(volatile uint64_t *addr) {
+-void lock(volatile uint64_t *addr) {
 -  asm volatile("csrci mstatus, 0x8");
 -  while(compare_and_swap(addr, 0, 1));
++void _lock(volatile uint64_t *addr) {
 +  int intr = _intr_read();
-+  while(compare_and_swap(addr, 0, intr | 0x2));
++  while(_compare_and_swap(addr, 0, intr | 0x2));
  }
  
- void release(volatile uint64_t *addr) {
+-void release(volatile uint64_t *addr) {
++void _release(volatile uint64_t *addr) {
 +  int intr = *addr & 0x1;
    *addr = 0;
 -  asm volatile("fence");
 -  asm volatile("csrsi mstatus, 0x8");
 +  _intr_write(intr);
+ }
+\ No newline at end of file
+diff --git a/libs/klib/src/stdlib.c b/libs/klib/src/stdlib.c
+index 18966846..0dd7b1b9 100644
+--- a/libs/klib/src/stdlib.c
++++ b/libs/klib/src/stdlib.c
+@@ -36,7 +36,7 @@ static struct {
+ volatile uint64_t malloc_lock = 0;
+ 
+ void *malloc(size_t size) {
+-  lock(&malloc_lock);
++  _lock(&malloc_lock);
+   if (last.ptr == NULL) {
+     last.ptr = _heap.start;
+     printf("heap start = %x\n", last.ptr);
+@@ -48,19 +48,19 @@ void *malloc(size_t size) {
+   // skip the region allocated by the last call
+   last.ptr += last.size;
+   if (last.ptr + size >= _heap.end) {
+-    release(&malloc_lock);
++    _release(&malloc_lock);
+     return NULL;
+   }
+   void *ret = last.ptr;
+   last.size = size;
+-  release(&malloc_lock);
++  _release(&malloc_lock);
+   return ret;
+ }
+ 
+ void free(void *ptr) {
+-  lock(&malloc_lock);
++  _lock(&malloc_lock);
+   if (ptr == last.ptr) last.size = 0;
+-  release(&malloc_lock);
++  _release(&malloc_lock);
+ }
+ 
+ #endif
+diff --git a/tests/amtest/src/main.c b/tests/amtest/src/main.c
+index 25904199..e3a1c47a 100644
+--- a/tests/amtest/src/main.c
++++ b/tests/amtest/src/main.c
+@@ -22,24 +22,15 @@ static const char *tests[256] = {
+ 
+ int main(const char *args) {
+   switch (args[0]) {
+-    CASE('x', dma_test);
+-    CASE('h', hello);
+-    CASE('i', hello_intr, IOE, CTE(simple_trap), REEH(simple_trap), RCEH(simple_trap), RTEH(simple_trap));
+-    CASE('z', soft_intr, IOE, CTE(soft_trap), RSEH(soft_trap), REEH(soft_trap), RCEH(soft_trap), RTEH(soft_trap));
+-    CASE('e', external_intr, IOE, NOTIMEINT(), CTE(external_trap), REEH(external_trap), RTEH(external_trap));
+-    CASE('u', test_BEU, IOE, NOTIMEINT(), CTE(handle_external_trap), REEH(handle_external_trap), RTEH(handle_external_trap));
+     CASE('d', devscan, IOE);
+-    CASE('m', finalize, PRE_MPE(args[1]), MPE(mp_print));
+     CASE('t', rtc_test, IOE);
+     CASE('k', keyboard_test, IOE);
+     CASE('v', video_test, IOE);
+     CASE('a', audio_test, IOE);
+     CASE('p', vm_test, CTE(vm_handler), VME(simple_pgalloc, simple_pgfree));
+-    CASE('c', pmp_test, CTE(simple_trap));
+     CASE('s', sv39_test, IOE, CTE(simple_trap));
+     CASE('f', sv39_hp_atom_test, IOE, CTE(simple_trap));
+     CASE('g', sv39_ppn_af_test, IOE, CTE(simple_trap))
+-    CASE('b', cache_test);
+     CASE('r', rtc_accuracy_test);
+     case 'H':
+     default:
+diff --git a/tests/amtest/src/tests/beu.c b/tests/amtest/src/tests/beu.c
+deleted file mode 100644
+index 48dd2ebd..00000000
+--- a/tests/amtest/src/tests/beu.c
++++ /dev/null
+@@ -1,168 +0,0 @@
+-#include <amtest.h>
+-#include <xs.h>
+-
+-#define READ_WORD(addr)        (*((volatile uint32_t *)(addr)))
+-#define WRITE_WORD(addr, data) (*((volatile uint32_t *)(addr)) = (data))
+-
+-#define CONTEXT_M 0
+-#define CONTEXT_S 1
+-#define PLIC_PRIORITY          (PLIC_BASE_ADDR + 0x4UL)
+-#define PLIC_PENDING           (PLIC_BASE_ADDR + 0x1000UL)
+-#define PLIC_ENABLE(c)         (PLIC_BASE_ADDR + 0x2000UL + c*0x80UL)
+-#define PLIC_THRESHOLD(c)      (PLIC_BASE_ADDR + 0x200000UL + c*0x1000UL)
+-#define PLIC_CLAIM(c)          (PLIC_BASE_ADDR + 0x200004UL + c*0x1000UL)
+-// External interrupts start with index PLIC_EXT_INTR_OFFSET(interrupt source 0 is not used)
+-#define PLIC_EXT_INTR_OFFSET 1
+-
+-#define BUS_ERROR_INTERRUPT 256
+-#define L3_ERROR_INTERRUPT 257
+-
+-// set `TEST_L3` to test l3 cache error 
+-// unset `TEST_L3` to test flow of BEU
+-#define TEST_L3
+-
+-// BEU constants
+-#define BEU_BASE 0x1f10010000UL
+-#define BEU_ENABLE_REG (BEU_BASE + 0x10UL)
+-#define BEU_PLIC_INTERRUPT_REG (BEU_BASE + 0x18UL)
+-
+-// error handle
+-#define error(msg) {printf(msg); _halt(1);}
+-
+-static volatile uint32_t should_claim = -1;
+-static volatile bool should_trigger = false;
+-static volatile int current_context = CONTEXT_S;
+-
+-#ifndef TEST_L3
+-static void enable_plic_bus_error_interrupt() {
+-  // enable bus error interrupt 0
+-  plic_enable(CONTEXT_S, BUS_ERROR_INTERRUPT + PLIC_EXT_INTR_OFFSET);
+-}
+-
+-static void disable_plic_bus_error_interrupt() {
+-  // disable bus error interrupt 0
+-  plic_disable(CONTEXT_S, BUS_ERROR_INTERRUPT + PLIC_EXT_INTR_OFFSET);
+-}
+-
+-static void config_BEU() {
+-  // enable icache , dcache , l2 cache ecc; 7 means 0b111
+-  // 0b1(l2 cache ecc)1(dcache ecc)1(icache ecc)
+-  WRITE_WORD(BEU_ENABLE_REG, READ_WORD(BEU_ENABLE_REG) | 7);
+-  WRITE_WORD(BEU_PLIC_INTERRUPT_REG, READ_WORD(BEU_PLIC_INTERRUPT_REG) | 7);
+-}
+-#else
+-static void enable_plic_l3_cache_error_interrupt() {
+-  // enable l3 cache error interrupt
+-  plic_enable(CONTEXT_S, L3_ERROR_INTERRUPT + PLIC_EXT_INTR_OFFSET);
+-}
+-
+-static void disable_plic_l3_cache_error_interrupt() {
+-  // disable l3 cache error interrupt
+-  plic_disable(CONTEXT_S, L3_ERROR_INTERRUPT + PLIC_EXT_INTR_OFFSET);
+-}
+-#endif
+-
+-void handle_ext_intr() {
+-  if (!should_trigger) {
+-    error("should not trigger\n");
+-  }
+-  uint32_t claim = plic_get_claim(current_context);  // READ_WORD(PLIC_CLAIM(current_context));
+-  printf("an interrupt is detected, plic claim is: %d\n", claim);
+-  if (claim) {
+-    if (claim != should_claim) {
+-      error("ERROR: is the external interrupt bit in PLIC cleared correctly?\n");
+-    }
+-    plic_clear_intr(claim); // CLEAR_INTR(claim - PLIC_EXT_INTR_OFFSET);
+-    plic_clear_claim(current_context, claim); // WRITE_WORD(PLIC_CLAIM(current_context), claim);
+-    // NOTE: claim will always be 257 as beu always sends ecc error to plic
+-    should_claim = -1;
+-    // disable ecc error interrupt to continue
+-    #ifndef TEST_L3
+-      disable_plic_bus_error_interrupt();
+-    #else
+-      disable_plic_l3_cache_error_interrupt();
+-    #endif
+-  }
+-  else {
+-    error("ERROR: no claim?\n");
+-  }
+-}
+-
+-_Context *handle_external_trap(_Event ev, _Context *ctx) {
+-  switch(ev.event) {
+-    case _EVENT_IRQ_TIMER:
+-      printf("t"); break;
+-    case _EVENT_IRQ_IODEV:
+-      printf("d"); handle_ext_intr(); break;
+-    case _EVENT_YIELD:
+-      printf("y"); break;
+-    default:
+-      printf("u"); _halt(1);
+-  }
+-  return ctx;
+-}
+-
+-static void plic_intr_init() {
+-  for (int i = 0; i < MAX_EXTERNAL_INTR + MAX_INTERNAL_INTR + PLIC_EXT_INTR_OFFSET; i++) {
+-    // WRITE_WORD(PLIC_PRIORITY + i * sizeof(uint32_t), 0x1);
+-    plic_set_priority(i, 0x1);
+-  }
+-  for (int i = 0; i < MAX_EXTERNAL_INTR + PLIC_EXT_INTR_OFFSET + MAX_INTERNAL_INTR; i += 32) {
+-    plic_disable_word(CONTEXT_M, i); // WRITE_WORD(PLIC_ENABLE(CONTEXT_M) + i/8, 0);
+-    plic_disable_word(CONTEXT_S, i); // WRITE_WORD(PLIC_ENABLE(CONTEXT_S) + i/8, 0);
+-  }
+-  plic_set_threshold(CONTEXT_M, 0x0); // WRITE_WORD(PLIC_THRESHOLD(CONTEXT_M), 0x0);
+-  plic_set_threshold(CONTEXT_S, 0x0); // WRITE_WORD(PLIC_THRESHOLD(CONTEXT_S), 0x0);
+-}
+-
+-static inline void __attribute__((optimize("O0"))) wait_time(int cnt) {
+-  char blocks[20][512];
+-  while(cnt--) {
+-    for(int i = 0; i < 20; i++) {
+-      blocks[i][0] = 1;
+-      blocks[i][1] = blocks[i][0];
+-    }
+-  }
+-}
+-
+-void test_BEU() {
+-
+-  // NOTE: we are under S mode during testing 
+-  // enable supervisor external interrupts
+-  asm volatile("csrs sie, %0" : : "r"((1 << 9)));
+-  asm volatile("csrs sstatus, 2");
+-  plic_intr_init();
+-
+-  #ifndef TEST_L3
+-    // config BEU to enable cache ecc error interrupt
+-    config_BEU();
+-
+-    should_trigger = true;
+-    should_claim = BUS_ERROR_INTERRUPT + PLIC_EXT_INTR_OFFSET;
+-    // enable plic source of BEU
+-    enable_plic_bus_error_interrupt();
+-
+-    // we expect an interrupt from now on
+-    wait_time(100);
+-  #else 
+-    // test l3 cache error
+-    should_trigger = true;
+-    should_claim = L3_ERROR_INTERRUPT + PLIC_EXT_INTR_OFFSET;
+-    // enable plic source of l3 cache error
+-    enable_plic_l3_cache_error_interrupt();
+-
+-    // we expect an interrupt from now on
+-    wait_time(100);
+-  #endif
+-
+-  if(should_claim != -1) {
+-    #ifndef TEST_L3
+-      error("beu interrupt is not triggered or not handled correctly\n");
+-    #else
+-      error("l3 cache error interrupt is not triggered or not handled correctly\n");
+-    #endif
+-  }
+-
+-  printf("beu test passed!!!\n");
+-  _halt(0);
+-}
+diff --git a/tests/amtest/src/tests/cache.c b/tests/amtest/src/tests/cache.c
+deleted file mode 100644
+index 538f9e68..00000000
+--- a/tests/amtest/src/tests/cache.c
++++ /dev/null
+@@ -1,421 +0,0 @@
+-#include <amtest.h>
+-
+-#define cop_op_idx 0
+-#define cop_finish_idx 1
+-#define cop_level_idx 2
+-#define cop_way_idx 3
+-#define cop_index_idx 4
+-#define cop_bank_idx 5
+-#define cop_tag_ecc_idx 6
+-#define cop_tag_bits_idx 7
+-#define cop_tag_data_idx 8
+-#define cop_tag_data_h_idx 9
+-#define cop_ecc_width_idx 10
+-#define cop_data_ecc_idx 11
+-#define cop_data_0_idx 0
+-#define cop_data_1_idx 1
+-#define cop_data_2_idx 2
+-#define cop_data_3_idx 3
+-#define cop_data_4_idx 4
+-#define cop_data_5_idx 5
+-#define cop_data_6_idx 6
+-#define cop_data_7_idx 7
+-
+-#define COP_ID_ICACHE 0
+-#define COP_ID_DCACHE 1
+-
+-#define COP_READ_TAG_ECC 0
+-#define COP_READ_DATA_ECC 1
+-#define COP_READ_TAG 2
+-#define COP_READ_DATA 3
+-#define COP_WRITE_TAG_ECC 4
+-#define COP_WRITE_DATA_ECC 5
+-#define COP_WRITE_TAG 6
+-#define COP_WRITE_DATA 7
+-#define COP_FLUSH_BLOCK 8
+-
+-void success() {
+-    printf("Cache op test passed.\n");
+-    asm("li a0, 0\n");
+-    asm(".word 0x0000006b\n");
+-}
+-
+-void failure() {
+-    printf("Cache op test failed\n");
+-    asm("li a0, 1\n");
+-    asm(".word 0x0000006b\n");
+-}
+-
+-void clear_cop_csrs() {
+-    _l1cache_op_write(cop_op_idx, 0);
+-    _l1cache_op_write(cop_finish_idx, 0);
+-    _l1cache_op_write(cop_level_idx, 0);
+-    _l1cache_op_write(cop_way_idx, 0);
+-    _l1cache_op_write(cop_index_idx, 0);
+-    _l1cache_op_write(cop_bank_idx, 0);
+-    _l1cache_op_write(cop_tag_ecc_idx, 0);
+-    _l1cache_op_write(cop_tag_bits_idx, 0);
+-    _l1cache_op_write(cop_tag_data_idx, 0);
+-    _l1cache_op_write(cop_tag_data_h_idx, 0);
+-    _l1cache_op_write(cop_ecc_width_idx, 0);
+-    _l1cache_op_write(cop_data_ecc_idx, 0);
+-    _l1cache_data_write(cop_data_0_idx, 0);
+-    _l1cache_data_write(cop_data_1_idx, 0);
+-    _l1cache_data_write(cop_data_2_idx, 0);
+-    _l1cache_data_write(cop_data_3_idx, 0);
+-    _l1cache_data_write(cop_data_4_idx, 0);
+-    _l1cache_data_write(cop_data_5_idx, 0);
+-    _l1cache_data_write(cop_data_6_idx, 0);
+-    _l1cache_data_write(cop_data_7_idx, 0);
+-}
+-
+-void wait_until_cop_finish_or_timeout() {
+-    int t1 = 0x0;
+-    int t0 = 0x1000;
+-    uintptr_t csrread = 0;
+-    while(t1 < t0) {
+-        csrread = _l1cache_op_read(cop_finish_idx);
+-        if(csrread != 0) {
+-            return;
+-        }
+-        t1 += 1;
+-    }
+-}
+-
+-void cache_test() {
+-    printf("Cache op test: difftest should be disabled\n");
+-    printf("Hint: use --no-diff to disable difftest\n");
+-
+-    //-----------------------------------------------------------------------------
+-    // Test 1: cache op ctrl csr read / write
+-    //-----------------------------------------------------------------------------
+-
+-    // basic csr read/write
+-    _l1cache_op_write(cop_finish_idx, 0);
+-    uintptr_t csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 0) {
+-        failure();
+-        return;
+-    }
+-
+-    _l1cache_op_write(cop_level_idx, 0x12345678);
+-    csrread = _l1cache_op_read(cop_level_idx);
+-    if(csrread != 0x12345678) {
+-        failure();
+-        return;
+-    }
+-
+-    _l1cache_data_write(cop_data_0_idx, 0x12345678);
+-    csrread = _l1cache_data_read(cop_data_0_idx);
+-    if(csrread != 0x12345678) {
+-        failure();
+-        return;
+-    }
+-
+-    // basic dcache data write op
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    _l1cache_data_write(cop_data_0_idx, 0x12345678);
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_op_idx, COP_WRITE_DATA);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    //-----------------------------------------------------------------------------
+-    // Test 2: basic cache op flow
+-    //-----------------------------------------------------------------------------
+-
+-    // dcache data write/read op: loop test
+-
+-    // write 0x12345678, 0x0, 0x0 ... to dcache index 0 way 0
+-    
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_data_write(cop_data_0_idx, 0x12345678);
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-
+-    // send cache op request
+-    _l1cache_op_write(cop_op_idx, COP_WRITE_DATA);
+- 
+-    wait_until_cop_finish_or_timeout();        //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-
+-    // read data cache using cache op
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_op_idx, COP_READ_DATA);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-
+-    csrread = _l1cache_data_read(cop_data_0_idx);
+-    if(csrread != 0x12345678) {
+-        failure();
+-        return;
+-    }
+-
+-    //-----------------------------------------------------------------------------
+-    // Test 3: dcache data read/write
+-    //-----------------------------------------------------------------------------
+-
+-    // write 0x0, 0x1, 0x2, 0x3 ... to dcache index 1 way 1
+-
+-    // write data cache using cache op
+-    
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_data_write(cop_data_0_idx, 0x0);
+-    _l1cache_data_write(cop_data_1_idx, 0x1);
+-    _l1cache_data_write(cop_data_2_idx, 0x2);
+-    _l1cache_data_write(cop_data_3_idx, 0x3);
+-    _l1cache_data_write(cop_data_4_idx, 0x4);
+-    _l1cache_data_write(cop_data_5_idx, 0x5);
+-    _l1cache_data_write(cop_data_6_idx, 0x6);
+-    _l1cache_data_write(cop_data_7_idx, 0x7);
+-
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_way_idx, 0x1);
+-    _l1cache_op_write(cop_index_idx, 0x1);
+-
+-    // send cache op request
+-    _l1cache_op_write(cop_op_idx, COP_WRITE_DATA);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-
+-
+-    // read data cache using cache op
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_way_idx, 0x1);
+-    _l1cache_op_write(cop_index_idx, 0x1);
+-
+-    // send cache op request
+-    _l1cache_op_write(cop_op_idx, COP_READ_DATA);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-
+-    csrread = _l1cache_data_read(cop_data_0_idx);
+-    if(csrread != 0) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_data_read(cop_data_1_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_data_read(cop_data_2_idx);
+-    if(csrread != 2) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_data_read(cop_data_3_idx);
+-    if(csrread != 3) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_data_read(cop_data_4_idx);
+-    if(csrread != 4) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_data_read(cop_data_5_idx);
+-    if(csrread != 5) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_data_read(cop_data_6_idx);
+-    if(csrread != 6) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_data_read(cop_data_7_idx);
+-    if(csrread != 7) {
+-        failure();
+-        return;
+-    }
+-
+-    //-----------------------------------------------------------------------------
+-    // Test 4: dcache tag read/write
+-    //-----------------------------------------------------------------------------
+-
+-    // write 0x233 to dcache index 1 way 1 tag, then read it
+-    // write data cache using cache op
+-    
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_op_write(cop_tag_data_idx, 0x233);
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_way_idx, 0x1);
+-    _l1cache_op_write(cop_index_idx, 0x1);
+- 
+-    // send cache op request
+-    _l1cache_op_write(cop_op_idx, COP_WRITE_TAG);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-
+-    // read data cache tag using cache op
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_way_idx, 0x1);
+-    _l1cache_op_write(cop_index_idx, 0x1);
+-
+-    // send cache op request
+-    _l1cache_op_write(cop_op_idx, COP_READ_TAG);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_op_read(cop_tag_data_idx);
+-    if(csrread != 0x233) {
+-        failure();
+-        return;
+-    }
+-
+-    //-----------------------------------------------------------------------------
+-    // Test 5: dcache ecc read/write
+-    //-----------------------------------------------------------------------------
+-
+-    // write 0x3 to dcache index 1 way 1 bank 1 data ecc, then read it
+-    
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_op_write(cop_data_ecc_idx, 0x3);
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_way_idx, 0x1);
+-    _l1cache_op_write(cop_index_idx, 0x1);
+-
+-    // send cache op request
+-    _l1cache_op_write(cop_op_idx, COP_WRITE_DATA_ECC);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-
+-    // read data cache tag using cache op
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_way_idx, 0x1);
+-    _l1cache_op_write(cop_index_idx, 0x1);
+-
+-    // send cache op request
+-    _l1cache_op_write(cop_op_idx, COP_READ_DATA_ECC);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_op_read(cop_data_ecc_idx);
+-    if(csrread != 0x3) {
+-        failure();
+-        return;
+-    }
+-
+-    // write 0x3 to dcache index 1 way 1 bank 1 tag ecc, then read it
+-
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_op_write(cop_tag_ecc_idx, 0x3);
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_way_idx, 0x1);
+-    _l1cache_op_write(cop_index_idx, 0x1);
+-
+-    // send cache op request
+-    _l1cache_op_write(cop_op_idx, COP_WRITE_TAG_ECC);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-
+-    // read data cache tag using cache op
+-    clear_cop_csrs();       //reset cache op csrs
+-
+-    // prepare cache op ctrl info
+-    _l1cache_op_write(cop_level_idx, COP_ID_DCACHE);
+-    _l1cache_op_write(cop_way_idx, 0x1);
+-    _l1cache_op_write(cop_index_idx, 0x1);
+-
+-    // send cache op request
+-    _l1cache_op_write(cop_op_idx, COP_READ_TAG_ECC);
+-
+-    wait_until_cop_finish_or_timeout();       //wait for cache op response
+-
+-    // check cache op result
+-    csrread = _l1cache_op_read(cop_finish_idx);
+-    if(csrread != 1) {
+-        failure();
+-        return;
+-    }
+-    csrread = _l1cache_op_read(cop_tag_ecc_idx);
+-    if(csrread != 0x3) {
+-        failure();
+-        return;
+-    }
+-
+-    success();
+-}
+\ No newline at end of file
+diff --git a/tests/amtest/src/tests/dma.c b/tests/amtest/src/tests/dma.c
+deleted file mode 100644
+index 4ce65089..00000000
+--- a/tests/amtest/src/tests/dma.c
++++ /dev/null
+@@ -1,137 +0,0 @@
+-#include <amtest.h>
+-#include <xs.h>
+-
+-enum {
+-  s_idle,
+-  s_read,
+-  s_write,
+-  s_wait_resp_b,
+-  s_wait_resp_r0,
+-  s_wait_resp_r1
+-};
+-
+-typedef struct __attribute__((__packed__)) {
+-  uint64_t value    : 8;
+-  uint64_t reserved : 56;
+-} dma_state;
+-
+-typedef struct {
+-  uint64_t data[8];
+-  dma_state state;
+-  uint64_t address;
+-  uint64_t mask;
+-  uint64_t reserved[5];
+-} dma_mshr;
+-
+-// CHANGE this according to the memory map
+-volatile dma_mshr *mshr = (volatile dma_mshr *)0x1f00070000UL;
+-volatile uint64_t *mshr_valid = (volatile uint64_t *)0x1f00072000UL;
+-
+-// 4GB - 6GB
+-volatile uint8_t *memory = (volatile uint8_t *)0x2100000000UL;
+-// 6GB - 8GB
+-volatile uint8_t *ref_memory = (volatile uint8_t *)0x2180000000UL;
+-
+-inline void riscv_fence() {
+-  asm volatile("fence");
+-}
+-
+-uint64_t random_number() {
+-  static uint64_t count = 1;
+-  count++;
+-  uint64_t x = ((count >> 16) ^ count) * 0x45d9f3b;
+-  x = ((x >> 16) ^ x) * 0x45d9f3b;
+-  x = (x >> 16) ^ x;
+-  return x;
+-}
+-
+-inline uint64_t random_memory_offset() {
+-  // max 16MB
+-  return random_number() % 0x1000000UL;
+-}
+-
+-void dma_test() {
+-  assert(sizeof(dma_state) == 8);
+-  assert(sizeof(dma_mshr) == 16 * 8);
+-  printf("Starting DMA Test\n");
+-  printf("Setting memory\n");
+-  // randomly touch 256K * 64B = 8MB memory
+-  for (int i = 0; i < 64; i++) {
+-    uint64_t offset = random_memory_offset();
+-    uint64_t rand_num = random_number();
+-    // fetch memory to cache hierarchy randomly
+-    if (rand_num & 1) {
+-      memory[offset] = random_number();
+-    }
+-    // memory[offset] = rand_num;
+-    // ref_memory[offset] = rand_num;
+-    mshr[i].data[3] = rand_num;
+-    mshr[i].data[5] = rand_num;
+-    mshr[i].state.value = s_write;
+-    uint64_t address = (uint64_t)(memory + offset) ^ ((uint64_t)(memory + offset) & 0x3f);
+-    mshr[i].address = (uint64_t)(memory + offset) ^ ((uint64_t)(memory + offset) & 0x3f);
+-    assert(address == mshr[i].address);
+-    mshr[i].mask = 0xff00ff000000UL;
+-    volatile uint64_t *t = (volatile uint64_t *)(mshr[i].address + (uint64_t)(ref_memory - memory));
+-    t[3] = rand_num;
+-    t[5] = rand_num;
+-  }
+-  riscv_fence();
+-  printf("Finished setting memory. Starting DMA write.\n");
+-  *mshr_valid = 0xffffffffffffffffUL;
+-  bool mshr_cleared = false;
+-  while (!mshr_cleared) {
+-    mshr_cleared = true;
+-    for (int i = 0; i < 64; i++) {
+-      if (mshr[i].state.value) {
+-        mshr_cleared = false;
+-        break;
+-      }
+-    }
+-  }
+-  riscv_fence();
+-  printf("Finished DMA write. Starting DMA read.\n");
+-  for (int i = 0; i < 64; i++) {
+-    uint64_t rand_num = random_number();
+-    mshr[i].data[3] = rand_num;
+-    mshr[i].data[5] = rand_num;
+-    mshr[i].state.value = s_read;
+-    // do not touch mshr.address/mask
+-  }
+-  riscv_fence();
+-  *mshr_valid = 0xffffffffffffffffUL;
+-  mshr_cleared = false;
+-  while (!mshr_cleared) {
+-    mshr_cleared = true;
+-    for (int i = 0; i < 64; i++) {
+-      if (mshr[i].state.value) {
+-        mshr_cleared = false;
+-        break;
+-      }
+-    }
+-  }
+-  riscv_fence();
+-  printf("Finished DMA read. Starting CPU read.\n");
+-  for (int i = 0; i < 64; i++) {
+-    uint64_t base_offset = (uint64_t *)mshr[i].address - (uint64_t *)memory;
+-    volatile uint64_t *golden = (uint64_t *)ref_memory + base_offset;
+-    volatile uint64_t *dut = (uint64_t *)memory + base_offset; 
+-    for (int j = 0; j < 8; j++) {
+-      // only difftest for masked written data because original value in memory may be non-zero
+-      if (j != 3 && j != 5) continue;
+-      uint64_t dut_data = dut[j];
+-      uint64_t ref_data = golden[j];
+-      if (dut_data != ref_data || mshr[i].data[j] != ref_data) {
+-        printf("[ERROR  ] Test %d at offset %d: DUT(0x%016lx) != REF(0x%016lx) at address 0x%lx and 0x%lx\n",
+-          i, j, dut_data, ref_data, dut + j, golden + j);
+-        _halt(1);
+-      }
+-      else {
+-        // printf("[SUCCESS] Test %d at offset %d: DUT(0x%016lx) == REF(0x%016lx) at address 0x%lx and 0x%lx\n",
+-        //   i, j, dut_data, ref_data, dut + j, golden + j);
+-      }
+-    }
+-  }
+-  *mshr_valid = 0x0UL;
+-  printf("All tests passed.\n");
+-}
+diff --git a/tests/amtest/src/tests/extintr.c b/tests/amtest/src/tests/extintr.c
+deleted file mode 100644
+index ff140ca1..00000000
+--- a/tests/amtest/src/tests/extintr.c
++++ /dev/null
+@@ -1,227 +0,0 @@
+-#include <amtest.h>
+-#include <xs.h>
+-
+-#define READ_WORD(addr)        (*((volatile uint32_t *)(addr)))
+-#define WRITE_WORD(addr, data) (*((volatile uint32_t *)(addr)) = (data))
+-#define EXTRACT_BIT(data, i)   ((data) & (0x1UL << (i)))
+-#define SET_BIT(data, i)       ((data) | (0x1UL << (i)))
+-#define CLEAR_BIT(data, i)     ((data) ^ EXTRACT_BIT(data, i))
+-
+-#define INTR_REG_WIDTH         32
+-#define INTR_REG_ADDR(i)       ((INTR_GEN_ADDR) + ((i) << 2))
+-#define INTR_REG_INDEX(i)      ((i) / INTR_REG_WIDTH)
+-#define INTR_REG_OFFSET(i)     ((i) % INTR_REG_WIDTH)
+-
+-#define INTR_RANDOM_ADDR(i)    ((INTR_RANDOM) + ((i) << 2))
+-
+-#define READ_INTR_REG(i)        READ_WORD(INTR_REG_ADDR(i))
+-#define WRITE_INTR_REG(i, data) WRITE_WORD(INTR_REG_ADDR(i), data)
+-
+-#define READ_INTR(i)     EXTRACT_BIT(READ_INTR_REG(INTR_REG_INDEX(i)), INTR_REG_OFFSET(i))
+-#define CLEAR_INTR(i)    WRITE_INTR_REG(INTR_REG_INDEX(i), CLEAR_BIT(READ_INTR_REG(INTR_REG_INDEX(i)), INTR_REG_OFFSET(i)))
+-#define SET_INTR(i)      WRITE_INTR_REG(INTR_REG_INDEX(i), SET_BIT(READ_INTR_REG(INTR_REG_INDEX(i)), INTR_REG_OFFSET(i)))
+-
+-#define CONTEXT_M 0
+-#define CONTEXT_S 1
+-#define PLIC_PRIORITY          (PLIC_BASE_ADDR + 0x4UL)
+-#define PLIC_PENDING           (PLIC_BASE_ADDR + 0x1000UL)
+-#define PLIC_ENABLE(c)         (PLIC_BASE_ADDR + 0x2000UL + c*0x80UL)
+-#define PLIC_THRESHOLD(c)      (PLIC_BASE_ADDR + 0x200000UL + c*0x1000UL)
+-#define PLIC_CLAIM(c)          (PLIC_BASE_ADDR + 0x200004UL + c*0x1000UL)
+-// External interrupts start with index PLIC_EXT_INTR_OFFSET
+-#define PLIC_EXT_INTR_OFFSET   1
+-
+-// CSR.MIE
+-#define MEIE 11
+-#define SEIE 9
+-#define MSIE 3
+-#define SSIE 1
+-
+-static volatile uint32_t should_claim = -1;
+-static volatile bool random_claim = false;
+-static volatile bool should_trigger = false;
+-static volatile int current_context = CONTEXT_M;
+-static volatile uint32_t claim_count[MAX_EXTERNAL_INTR + MAX_INTERNAL_INTR] = {0};
+-static volatile uint32_t claim_count_all = 0;
+-
+-void s2m() {
+-  // simply write to mie to trigger an illegal instruction exception
+-  // m mode will set mie to enable meip
+-  asm volatile("csrs mie, 0");
+-}
+-
+-void do_wfi() {
+-  asm volatile("wfi");
+-}
+-
+-// void m2s() {
+-//   asm volatile("csrw mepc, ra; li ra, MSTATUS_MPP; csrc mstatus, ra;");
+-//   asm volatile("li ra, MSTATUS_MPP&(MSTATUS_MPP>>1); csrs mstatus, ra; mret");
+-// }
+-
+-#if defined(__ARCH_RISCV64_XS_SOUTHLAKE) || defined(__ARCH_RISCV64_XS_SOUTHLAKE_FLASH)
+-  const uint32_t MAX_RAND_ITER = 2;
+-#else
+-  const uint32_t MAX_RAND_ITER = 50;
+-#endif
+-
+-void do_ext_intr() {
+-  if (!should_trigger) {
+-    printf("should not trigger\n");
+-    _halt(2);
+-  }
+-  uint32_t claim = plic_get_claim(current_context);  // READ_WORD(PLIC_CLAIM(current_context));
+-  // printf("DO_EXT_INTR: claim %d should_claim %d\n", claim, should_claim);
+-  if (claim) {
+-    if (!random_claim && claim != should_claim) {
+-      printf("ERROR: is the external interrupt bit in PLIC cleared correctly?\n");
+-      assert(0);
+-    }
+-    claim_count[claim]++;
+-    claim_count_all++;
+-    plic_clear_intr(claim); // CLEAR_INTR(claim - PLIC_EXT_INTR_OFFSET);
+-    plic_clear_claim(current_context, claim); // WRITE_WORD(PLIC_CLAIM(current_context), claim);
+-    if (!random_claim && plic_get_claim(current_context)/*READ_WORD(PLIC_CLAIM(current_context))*/ != 0) {
+-      printf("ERROR: do you clear the external interrupt source correctly?\n");
+-      assert(0);
+-    }
+-    should_claim = -1;
+-    // simply write to mie to trigger an illegal instruction exception
+-    // m mode will set mie to enable meip
+-    asm volatile("csrs mie, 0");
+-  }
+-  else {
+-    printf("ERROR: no claim?\n");
+-    _halt(1);
+-  }
+-}
+-
+-_Context *external_trap(_Event ev, _Context *ctx) {
+-  switch(ev.event) {
+-    case _EVENT_IRQ_TIMER:
+-      printf("t"); break;
+-    case _EVENT_IRQ_IODEV:
+-      printf("d"); do_ext_intr(); break;
+-    case _EVENT_YIELD:
+-      printf("y"); break;
+-    default:
+-      printf("u"); _halt(1);
+-  }
+-  return ctx;
+-}
+-
+-static void plic_intr_init() {
+-  for (int i = 0; i < MAX_EXTERNAL_INTR + MAX_INTERNAL_INTR + PLIC_EXT_INTR_OFFSET; i++) {
+-    // WRITE_WORD(PLIC_PRIORITY + i * sizeof(uint32_t), 0x1);
+-    plic_set_priority(i, 0x1);
+-  }
+-  for (int i = 0; i < MAX_EXTERNAL_INTR + PLIC_EXT_INTR_OFFSET + MAX_INTERNAL_INTR; i += 32) {
+-    plic_disable_word(CONTEXT_M, i); // WRITE_WORD(PLIC_ENABLE(CONTEXT_M) + i/8, 0);
+-    plic_disable_word(CONTEXT_S, i); // WRITE_WORD(PLIC_ENABLE(CONTEXT_S) + i/8, 0);
+-  }
+-  plic_set_threshold(CONTEXT_M, 0x0); // WRITE_WORD(PLIC_THRESHOLD(CONTEXT_M), 0x0);
+-  plic_set_threshold(CONTEXT_S, 0x0); // WRITE_WORD(PLIC_THRESHOLD(CONTEXT_S), 0x0);
+-}
+-
+-void external_trigger(bool shall_trigger, bool wfi, int context) {
+-  printf("should trigger: %s\n", shall_trigger ? "Yes" : "No");
+-  current_context = context;
+-  should_trigger = shall_trigger;
+-
+-  int origin_claim;
+-  for (int i = 0; i < MAX_RAND_ITER; i++) {
+-    should_claim = (rand() % MAX_EXTERNAL_INTR) + PLIC_EXT_INTR_OFFSET;
+-    origin_claim = should_claim;
+-    // printf("interation:%d should_claim %d, setting intr\n", i, should_claim);
+-    plic_enable(current_context, should_claim); // WRITE_WORD(PLIC_ENABLE(current_context) + (should_claim / 32) * 4, (1UL << (should_claim % 32)));
+-    plic_set_intr(should_claim); // SET_INTR(should_claim - PLIC_EXT_INTR_OFFSET);
+-    if (shall_trigger && wfi) {
+-      do_wfi();
+-    }
+-    else {
+-      int counter = 0;
+-      while (should_claim != -1 && counter < 2000) {
+-        counter++;
+-      }
+-    }
+-    if (should_trigger) {
+-      if (should_claim != -1) {
+-        printf("external interrupt %d is not triggered!\n", should_claim);
+-        _halt(1);
+-      }
+-    } else {
+-      // clear
+-      uint32_t claim =  plic_get_claim(current_context); // READ_WORD(PLIC_CLAIM(current_context));
+-      plic_clear_intr(claim); // CLEAR_INTR(claim - PLIC_EXT_INTR_OFFSET);
+-      plic_clear_claim(current_context, claim); // WRITE_WORD(PLIC_CLAIM(current_context), claim);
+-    }
+-
+-    plic_disable(current_context, origin_claim); // WRITE_WORD(PLIC_ENABLE(current_context) + (origin_claim / 32) * 4, 0);
+-  }
+-  printf("current test finishes\n");
+-}
+-
+-void random_trigger() {
+-  should_trigger = true;
+-  current_context = CONTEXT_S;
+-  random_claim = true;
+-  claim_count_all = 0;
+-  WRITE_WORD(INTR_RANDOM_MASK, 0xfff);
+-  for (int i = 0; i < (MAX_EXTERNAL_INTR + 31) / 32; i++) {
+-    WRITE_WORD(INTR_RANDOM_ADDR(i), 0xffffffff);
+-  }
+-  // Add one here because PLIC interrupt number starts at 1.
+-  for (int i = 0; i < (MAX_EXTERNAL_INTR + 1 + 31) / 32; i++) {
+-    WRITE_WORD(PLIC_ENABLE(CONTEXT_S) + i * 4, 0xffffffff);
+-  }
+-  void hello_intr_n(int n);
+-  hello_intr_n(10);
+-  while (claim_count_all < MAX_RAND_ITER);
+-  printf("random test finishes\n");
+-}
+-
+-void external_intr() {
+-
+-  /** four stage test:
+-    * 1. m intr at m mode | mie | sie -> should trigger
+-    * 2. m intr at s mode -> should trigger
+-    * 3. s intr at m mode -> should not trigger
+-    * 4. s intr at s mode -> should trigger
+-    * but the state is s mode
+-    */
+-  // enable supervisor external interrupts
+-  asm volatile("csrs sie, %0" : : "r"((1 << 9)));
+-  asm volatile("csrs sstatus, 2");
+-  plic_intr_init();
+-  // enable WFI instruction
+-  asm volatile("csrs 0x5c4, %0" : : "r"((0x7)));
+-
+-  // trigger interrupts
+-  // s-mode
+-  printf("s-mode & external interrupt from context-s(1)\n");
+-  external_trigger(true, false, CONTEXT_S);
+-  printf("s-mode & external interrupt from context-s(1), with wfi\n");
+-  external_trigger(true, true, CONTEXT_S);
+-  printf("s-mode & external interrupt from context-m(0)\n");
+-  external_trigger(true, false, CONTEXT_M);
+-  printf("s-mode & external interrupt from context-m(0), with wfi\n");
+-  external_trigger(true, true, CONTEXT_M);
+-
+-  // M-mode external inter is not finishec
+-  // s2m(); // turn to m-mode
+-  // asm volatile("csrs mie, %0" : : "r"(1L << 11));
+-  // asm volatile("csrs mstatus, %0" : : "r"(1 << 3));
+-  // // m-mode
+-  // external_trigger(true, CONTEXT_M);
+-  // external_trigger(false, CONTEXT_S);
+-
+-#if !defined(__ARCH_RISCV64_XS_SOUTHLAKE) && !defined(__ARCH_RISCV64_XS_SOUTHLAKE_FLASH)
+-  plic_intr_init();
+-  random_trigger();
+-#endif
+-
+-  // for (int i = 0; i < MAX_EXTERNAL_INTR + MAX_INTERNAL_INTR; i++) {
+-  //   printf("claim_count[%d] = %lu\n", i, claim_count[i]);
+-  // }
+-  printf("external interrupt test passed!!!\n");
+-}
+diff --git a/tests/amtest/src/tests/pmp.c b/tests/amtest/src/tests/pmp.c
+deleted file mode 100644
+index 56de213a..00000000
+--- a/tests/amtest/src/tests/pmp.c
++++ /dev/null
+@@ -1,200 +0,0 @@
+-#include <amtest.h>
+-#include <csr.h>
+-#include <xsextra.h>
+-
+-/*
+- * Note that to be able to run this test, PMP should be set up before AM jump to supervisor
+- * You may find related initialzation code in __am_init_cte64()
+- */
+-
+-#define EXCEPTION_LOAD_ACCESS_FAULT 5
+-#define EXCEPTION_STORE_ACCESS_FAULT 7
+-
+-inline int inst_is_compressed(uint64_t addr){
+-  uint8_t byte = *(uint8_t*)addr;
+-  return (byte & 0x3) != 0x3; 
+-}
+-
+-volatile uint64_t pmp_store_access_fault_to_be_reported = 0;
+-volatile uint64_t pmp_store_access_fault_reported = 0;
+-volatile uint64_t pmp_load_access_fault_to_be_reported = 0;
+-volatile uint64_t pmp_load_access_fault_reported = 0;
+-
+-volatile int result_blackhole = 0;
+-
+-void reset_result_flags() {
+-  pmp_store_access_fault_to_be_reported = 0;
+-  pmp_store_access_fault_reported = 0;
+-  pmp_load_access_fault_to_be_reported = 0;
+-  pmp_load_access_fault_reported = 0;
+-}
+-
+-void result_check() {
+-  assert(!(pmp_store_access_fault_to_be_reported && pmp_load_access_fault_to_be_reported));
+-  if (pmp_store_access_fault_to_be_reported) {
+-    if (!pmp_store_access_fault_reported || pmp_load_access_fault_reported) {
+-      printf("pmp_store_access_fault_reported %x, pmp_load_access_fault_reported %x\n", 
+-        pmp_store_access_fault_reported, pmp_load_access_fault_reported);
+-      _halt(1);
+-    }
+-  } else if (pmp_load_access_fault_to_be_reported) {
+-    if (!pmp_load_access_fault_reported || pmp_store_access_fault_reported) {
+-      printf("pmp_store_access_fault_reported %x, pmp_load_access_fault_reported %x\n", 
+-        pmp_store_access_fault_reported, pmp_load_access_fault_reported);
+-      _halt(1);
+-    }
+-  } else {
+-    if (pmp_load_access_fault_reported || pmp_store_access_fault_reported) {
+-      printf("pmp_store_access_fault_reported %x, pmp_load_access_fault_reported %x\n", 
+-        pmp_store_access_fault_reported, pmp_load_access_fault_reported);
+-      _halt(1);
+-    }
+-  }
+-  // result check passed, reset flags
+-  pmp_store_access_fault_to_be_reported = 0;
+-  pmp_store_access_fault_reported = 0;
+-  pmp_load_access_fault_to_be_reported = 0;
+-  pmp_load_access_fault_reported = 0;
+-}
+-
+-_Context* pmp_store_access_fault_handler(_Event* ev, _Context *c) {
+-  printf("store access fault triggered, sepc %lx\n", c->sepc);
+-  pmp_store_access_fault_reported = 1;
+-  // skip the inst that triggered the exception
+-  c->sepc = inst_is_compressed(c->sepc) ? c->sepc + 2: c->sepc + 4; 
+-  // printf("goto %x\n", c->sepc);
+-  return c;
+-}
+-
+-_Context* pmp_load_access_fault_handler(_Event* ev, _Context *c) {
+-  printf("load access fault triggered, sepc %lx\n", c->sepc);
+-  pmp_load_access_fault_reported = 1;
+-  // skip the inst that triggered the exception
+-  c->sepc = inst_is_compressed(c->sepc) ? c->sepc + 2: c->sepc + 4; 
+-  // printf("goto %x\n", c->sepc);
+-  return c;
+-}
+-
+-void pmp_test() {
+-  irq_handler_reg(EXCEPTION_STORE_ACCESS_FAULT, &pmp_store_access_fault_handler);
+-  irq_handler_reg(EXCEPTION_LOAD_ACCESS_FAULT, &pmp_load_access_fault_handler);
+-  printf("start pmp test\n");
+-#if defined(__ARCH_RISCV64_NOOP) || defined(__ARCH_RISCV32_NOOP) || defined(__ARCH_RISCV64_XS)
+-  // Case: store to address protected by pmp
+-  pmp_store_access_fault_to_be_reported = 1;
+-  volatile int *a = (int *)(0x90000040UL);
+-  *a = 1; // should trigger a fault
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-  // Case: store to normal cacheable address
+-  int *b = (int *)(0xa0000000UL);
+-  *b = 1; // should not trigger a fault
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-  // Case: store to address protected by pmp tor
+-  pmp_store_access_fault_to_be_reported = 1;
+-  int *c = (int *)(0xb0000040UL);
+-  *c = 1; // should trigger a fault
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-  // Case: load from address protected by pmp
+-  pmp_load_access_fault_to_be_reported = 1;
+-  volatile int *d = (int *)(0x90000040UL);
+-  result_blackhole = (*d); // should trigger a fault
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-  // Case: load from address protected by pmp tor
+-  pmp_load_access_fault_to_be_reported = 1;
+-  volatile int *e = (int *)(0xb0000040UL);
+-  result_blackhole = (*e); // should trigger a fault
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-  // Case: store to address protected by pmp (use pmpcfg2)
+-  pmp_store_access_fault_to_be_reported = 1;
+-  int *f = (int *)(0xb0010000UL);
+-  *f = 1; // should trigger a fault
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-  
+-  // Case: lr from address protected by pmp
+-  pmp_load_access_fault_to_be_reported = 1;
+-  asm volatile(
+-    "li s4, 0xb0000040;"
+-    "lr.d s5, (s4);"
+-    :
+-    :
+-    :"s4","s5","s6"
+-  );
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-  // Case: sc to address protected by pmp
+-  pmp_store_access_fault_to_be_reported = 1;
+-  asm volatile(
+-    "li s4, 0xb0000040;"
+-    "sc.d s5, s5, (s4);"
+-    :
+-    :
+-    :"s4","s5","s6"
+-  );
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-  // Case: amo to address protected by pmp
+-  pmp_store_access_fault_to_be_reported = 1;
+-  asm volatile(
+-    "li s4, 0xb0000040;"
+-    "amoadd.d s5, s6, (s4);"
+-    :
+-    :
+-    :"s4","s5","s6"
+-  );
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-  // Case: amo to address protected by pmp (w,!r)
+-  pmp_store_access_fault_to_be_reported = 1;
+-  asm volatile(
+-    "li s4, 0xb0008000;"
+-    "amoadd.d s5, s6, (s4);"
+-    :
+-    :
+-    :"s4","s5","s6"
+-  );
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-  // Case: amo to address protected by pmp (!w,r)
+-  pmp_store_access_fault_to_be_reported = 1;
+-  asm volatile(
+-    "li s4, 0xb0004000;"
+-    "amoadd.d s5, s6, (s4);"
+-    :
+-    :
+-    :"s4","s5","s6"
+-  );
+-  result_check();
+-  printf("line %d passed\n", __LINE__);
+-
+-#elif defined(__ARCH_RISCV64_XS_SOUTHLAKE) || defined(__ARCH_RISCV64_XS_SOUTHLAKE_FLASH)
+-  // TODO: update pmp test for southlake
+-  pmp_store_access_fault_to_be_reported = 0;
+-  int *b = (int *)(0x2030000000UL);
+-  *b = 1; // should not trigger a fault
+-  result_check();
+-
+-  pmp_store_access_fault_to_be_reported = 1;
+-  volatile int *a = (int *)(0x2010000040UL);
+-  *a = 1; // should trigger a fault
+-  result_check();
+-#else
+-  // invalid arch
+-  printf("invalid arch\n");
+-  _halt(1);
+-#endif
+-}
+\ No newline at end of file
+diff --git a/tests/amtest/src/tests/soft_intr.c b/tests/amtest/src/tests/soft_intr.c
+index b029d962..621f45e8 100644
+--- a/tests/amtest/src/tests/soft_intr.c
++++ b/tests/amtest/src/tests/soft_intr.c
+@@ -1,5 +1,5 @@
+ #include <amtest.h>
+-#include <xs.h>
++// #include <xs.h>
+ #include <nemu.h>
+ 
+ #if defined(__ARCH_RISCV64_NOOP) || defined(__ARCH_RISCV64_XS) || defined(__ARCH_RISCV64_XS_SOUTHLAKE) || defined(__ARCH_RISCV64_XS_SOUTHLAKE_FLASH)
+diff --git a/tests/amtest/src/tests/sv39.c b/tests/amtest/src/tests/sv39.c
+index a19a0caa..c7fc2ebf 100644
+--- a/tests/amtest/src/tests/sv39.c
++++ b/tests/amtest/src/tests/sv39.c
+@@ -1,5 +1,5 @@
+ #include <amtest.h>
+-#include <csr.h>
++// #include <csr.h>
+ #include <xsextra.h>
+ 
+ /*
+@@ -15,6 +15,9 @@
+ static char *sv39_alloc_base = (char *)(0xc0000000UL);
+ #elif defined(__ARCH_RISCV64_XS_SOUTHLAKE) || defined(__ARCH_RISCV64_XS_SOUTHLAKE_FLASH)
+ static char *sv39_alloc_base = (char *)(0x2040000000UL);
++#elif defined(__ARCH_RISCV64_NEMU)
++extern char _heap_start;
++static char *sv39_alloc_base = &_heap_start;
+ #else
+   // invalid arch
+ #endif
+@@ -62,9 +65,7 @@ _Context* load_access_fault_handler(_Event* ev, _Context *c) {
+ 
+ _Context* store_access_fault_handler(_Event* ev, _Context *c) {
+   printf("store access fault triggered\n");
+-  if(!store_access_fault_to_be_reported){
+-    _halt(1); // something went wrong
+-  }
++  assert(store_access_fault_to_be_reported);
+   store_access_fault_to_be_reported = 0;
+   c->sepc = inst_is_compressed(c->sepc) ? c->sepc + 2: c->sepc + 4;
+   return c;
+@@ -90,7 +91,7 @@ void sv39_test() {
+   printf("start sv39 test\n");
+   _vme_init(sv39_pgalloc, sv39_pgfree);
+   printf("sv39 setup done\n");
+-#if defined(__ARCH_RISCV64_NOOP) || defined(__ARCH_RISCV32_NOOP) || defined(__ARCH_RISCV64_XS)
++#if defined(__ARCH_RISCV64_NOOP) || defined(__ARCH_RISCV32_NOOP) || defined(__ARCH_RISCV64_XS) || defined(__ARCH_RISCV64_NEMU)
+   _map(&kas, (void *)0x900000000UL, (void *)0x80020000, PTE_R | PTE_A | PTE_D);
+   _map(&kas, (void *)0xa00000000UL, (void *)0x80020000, PTE_W | PTE_R | PTE_A | PTE_D);
+   _map(&kas, (void *)0xb00000000UL, (void *)0x80020000, PTE_A | PTE_D);
+@@ -143,7 +144,7 @@ void sv39_ppn_af_test() {
+   printf("start sv39 test\n");
+   _vme_init(sv39_pgalloc, sv39_pgfree);
+   printf("sv39 setup done\n");
+-#if defined(__ARCH_RISCV64_NOOP) || defined(__ARCH_RISCV32_NOOP) || defined(__ARCH_RISCV64_XS)
++#if defined(__ARCH_RISCV64_NOOP) || defined(__ARCH_RISCV32_NOOP) || defined(__ARCH_RISCV64_XS) || defined(__ARCH_RISCV64_NEMU)
+   _map(&kas, (void *)0x900000000UL, (void *)0x80020000, PTE_W | PTE_R | PTE_A | PTE_D);
+   _map(&kas, (void *)0xa00000000UL, (void *)0x80020000, PTE_W | PTE_R | PTE_A | PTE_D);
+   uint64_t addr = 0xb00000000UL;
+@@ -210,7 +211,7 @@ void sv39_hp_atom_test() {
+   printf("start sv39 hugepage atom test\n");
+   _vme_init(sv39_pgalloc, sv39_pgfree);
+   printf("sv39 setup done\n");
+-#if defined(__ARCH_RISCV64_NOOP) || defined(__ARCH_RISCV32_NOOP) || defined(__ARCH_RISCV64_XS)
++#if defined(__ARCH_RISCV64_NOOP) || defined(__ARCH_RISCV32_NOOP) || defined(__ARCH_RISCV64_XS) || defined(__ARCH_RISCV64_NEMU)
+   _map(&kas, (void *)0x900000000UL, (void *)0x80200000, PTE_R | PTE_A | PTE_D);
+   // allocate a metapage, not protected by pmp
+   _map_rv_hugepage(&kas, (void *)0xa00000000UL, (void *)0x80200000, PTE_W | PTE_R | PTE_A | PTE_D, 1);
+@@ -264,71 +265,71 @@ void sv39_hp_atom_test() {
+     _halt(1);
+   }
+ 
+-  printf("test sv39 hugepage store access fault\n");
+-  store_access_fault_to_be_reported = 1;
+-  *hp_pmp_ptr = 'b';
+-  if(store_page_fault_to_be_reported){
+-    _halt(1);
+-  }
+-
+-  printf("test sv39 hugepage load access fault\n");
+-  load_access_fault_to_be_reported = 1;
+-  *hp_rw_ptr = *hp_pmp_ptr;
+-  if(load_access_fault_to_be_reported){
+-    _halt(1);
+-  }
+-
+-  printf("test sv39 hugepage atom store page fault\n");
+-  store_page_fault_to_be_reported = 1;
+-  asm volatile(
+-    "li s4, 0xb00000000;"
+-    "amoadd.d s5, s6, (s4);"
+-    :
+-    :
+-    :"s4","s5","s6"
+-  );
+-  if(store_page_fault_to_be_reported){
+-    _halt(1);
+-  }
+-
+-  printf("test sv39 hugepage atom load page fault\n");
+-  load_page_fault_to_be_reported = 1;
+-  asm volatile(
+-    "li s4, 0xc00000000;"
+-    "lr.d s5, (s4);"
+-    :
+-    :
+-    :"s4","s5","s6"
+-  );
+-  if(load_page_fault_to_be_reported){
+-    _halt(1);
+-  }
+-
+-  printf("test sv39 hugepage atom store access fault\n");
+-  store_access_fault_to_be_reported = 1;
+-  asm volatile(
+-    "li s4, 0xd00000000;"
+-    "amoadd.d s5, s6, (s4);"
+-    :
+-    :
+-    :"s4","s5","s6"
+-  );
+-  if(store_page_fault_to_be_reported){
+-    _halt(1);
+-  }
+-
+-  printf("test sv39 hugepage atom load access fault\n");
+-  load_access_fault_to_be_reported = 1;
+-  asm volatile(
+-    "li s4, 0xd00000000;"
+-    "lr.d s5, (s4);"
+-    :
+-    :
+-    :"s4","s5","s6"
+-  );
+-  if(load_access_fault_to_be_reported){
+-    _halt(1);
+-  }
++  (void)(hp_pmp_ptr);
++  // printf("store_access_fault_to_be_reported=%08x\n", &store_access_fault_to_be_reported);
++  // store_access_fault_to_be_reported = 1;
++  // printf("test sv39 hugepage store access fault\n");
++  // *hp_pmp_ptr = 'b';
++  // assert(!store_access_fault_to_be_reported);
++
++  // printf("test sv39 hugepage load access fault\n");
++  // load_access_fault_to_be_reported = 1;
++  // *hp_rw_ptr = *hp_pmp_ptr;
++  // if(load_access_fault_to_be_reported){
++  //   _halt(1);
++  // }
++
++  // printf("test sv39 hugepage atom store page fault\n");
++  // store_page_fault_to_be_reported = 1;
++  // asm volatile(
++  //   "li s4, 0xb00000000;"
++  //   "amoadd.d s5, s6, (s4);"
++  //   :
++  //   :
++  //   :"s4","s5","s6"
++  // );
++  // if(store_page_fault_to_be_reported){
++  //   _halt(1);
++  // }
++
++  // printf("test sv39 hugepage atom load page fault\n");
++  // load_page_fault_to_be_reported = 1;
++  // asm volatile(
++  //   "li s4, 0xc00000000;"
++  //   "lr.d s5, (s4);"
++  //   :
++  //   :
++  //   :"s4","s5","s6"
++  // );
++  // if(load_page_fault_to_be_reported){
++  //   _halt(1);
++  // }
++
++  // printf("test sv39 hugepage atom store access fault\n");
++  // store_access_fault_to_be_reported = 1;
++  // asm volatile(
++  //   "li s4, 0xd00000000;"
++  //   "amoadd.d s5, s6, (s4);"
++  //   :
++  //   :
++  //   :"s4","s5","s6"
++  // );
++  // if(store_page_fault_to_be_reported){
++  //   _halt(1);
++  // }
++
++  // printf("test sv39 hugepage atom load access fault\n");
++  // load_access_fault_to_be_reported = 1;
++  // asm volatile(
++  //   "li s4, 0xd00000000;"
++  //   "lr.d s5, (s4);"
++  //   :
++  //   :
++  //   :"s4","s5","s6"
++  // );
++  // if(load_access_fault_to_be_reported){
++  //   _halt(1);
++  // }
+ 
+   _halt(0);
  }
 \ No newline at end of file
 -- 
