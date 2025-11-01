@@ -17,6 +17,7 @@ import website.lihan.temu.cpu.RvUtils.IInstruct;
 import website.lihan.temu.cpu.RvUtils.JInstruct;
 import website.lihan.temu.cpu.RvUtils.SInstruct;
 import website.lihan.temu.cpu.RvUtils.UInstruct;
+import website.lihan.temu.cpu.instr.Amo;
 import website.lihan.temu.cpu.instr.BranchNode;
 import website.lihan.temu.cpu.instr.CallNode;
 import website.lihan.temu.cpu.instr.CsrRWNode;
@@ -99,10 +100,11 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     int bci = startBci;
     while (true) {
       CompilerAsserts.partialEvaluationConstant(bci);
+      assert bci + 4 <= bc.length;
       int instr = BYTES.getInt(bc, bci);
       CompilerAsserts.partialEvaluationConstant(instr);
 
-      // Utils.printf("pc=%08x: %08x, sp=%08x\n", baseAddr + bci, instr, cpu.getReg(2));
+      website.lihan.temu.Utils.printf("pc=%08x: %08x, sp=%08x, ra=%08x\n", baseAddr + bci, instr, cpu.getReg(2), cpu.getReg(1));
       int nextBci = bci + 4;
 
       int opcode = instr & 0x7f;
@@ -150,7 +152,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           // optimize out the JumpException throwing and just return to the caller directly.
           final var nextPc = cpu.getReg(node.rs1) + node.imm;
           if (node.rd == 1) {
-            node.execute(cpu, node.returnPc);
+            node.execute(cpu);
           } else if (node.rd == 0 && CallNode.jalrIsReturn(frame, nextPc)) {
             return 0;
           } else {
@@ -183,6 +185,10 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         case Opcodes.FENCE -> {
           // No operation
         }
+        case Opcodes.AMO -> {
+          var node = Amo.class.cast(nodes[(instr >> 8)]);
+          node.execute(cpu);
+        }
         default -> throw IllegalInstructionException.create(getPc(bci), instr);
       }
 
@@ -196,6 +202,11 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
             return result;
           }
         }
+      }
+
+      if (nextBci >= bc.length) {
+        // reached the end of the bytecode page
+        throw JumpException.create(getPc(nextBci));
       }
       bci = nextBci;
     }
@@ -245,36 +256,22 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         }
         case Opcodes.LOAD -> {
           final var i = IInstruct.decode(instr);
-          final int length =
-              switch (i.funct3() & 0b11) {
-                case 0b00 -> 1;
-                case 0b01 -> 2;
-                case 0b10 -> 4;
-                case 0b11 -> 8;
-                default -> 0;
-              };
-          final var isValidInstr = length != 0;
-          final var shouldSignExtend = (i.funct3() & 0b100) == 0;
-
           final var nodeIdx = nodeList.size();
-          nodeList.add(LoadNodeGen.create(length, shouldSignExtend, i.rs1(), i.rd(), i.imm()));
-          instr = Opcodes.LOAD | (isValidInstr ? 0x80 : 0) | (nodeIdx << 8);
+          nodeList.add(LoadNodeGen.create(i, pc));
+          instr = Opcodes.LOAD | (nodeIdx << 8);
           BYTES.putInt(bc, bci, instr);
         }
         case Opcodes.STORE -> {
           final var s = SInstruct.decode(instr);
-          int length =
-              switch (s.funct3() & 0b11) {
-                case 0b00 -> 1;
-                case 0b01 -> 2;
-                case 0b10 -> 4;
-                case 0b11 -> 8;
-                default -> 0;
-              };
-          var isValidInstr = length != 0;
           var nodeIdx = nodeList.size();
-          nodeList.add(StoreNodeGen.create(length, s.rs1(), s.rs2(), s.imm()));
-          instr = Opcodes.STORE | (isValidInstr ? 0x80 : 0) | (nodeIdx << 8);
+          nodeList.add(StoreNodeGen.create(s, pc));
+          instr = Opcodes.STORE | (nodeIdx << 8);
+          BYTES.putInt(bc, bci, instr);
+        }
+        case Opcodes.AMO -> {
+          final var nodeIdx = nodeList.size();
+          nodeList.add(new Amo(pc, instr));
+          instr = Opcodes.AMO | (nodeIdx << 8);
           BYTES.putInt(bc, bci, instr);
         }
         case Opcodes.SYSTEM -> {
@@ -301,23 +298,16 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
 
   private void doLoad(Rv64State cpu, int bci, int instr) {
     var loadNode = LoadNode.class.cast(nodes[(instr >> 8)]);
-    var isValidInstr = (instr & 0x80) != 0;
-    if (!isValidInstr) {
-      throw IllegalInstructionException.create(getPc(bci), instr);
-    }
+    loadNode.throwIfInvalid();
     var addr = cpu.getReg(loadNode.rs1) + loadNode.offset;
-    var value = loadNode.execute(addr);
-
+    var value = loadNode.execute(cpu, addr);
     cpu.setReg(loadNode.rd, value);
   }
 
   private void doStore(Rv64State cpu, int bci, int instr) {
     var storeNode = StoreNode.class.cast(nodes[(instr >> 8)]);
-    var isValidInstr = (instr & 0x80) != 0;
-    if (!isValidInstr) {
-      throw IllegalInstructionException.create(getPc(bci), instr);
-    }
+    storeNode.throwIfInvalid();
     var addr = cpu.getReg(storeNode.rs1) + storeNode.offset;
-    storeNode.execute(addr, cpu.getReg(storeNode.rs2));
+    storeNode.execute(cpu, addr, cpu.getReg(storeNode.rs2));
   }
 }

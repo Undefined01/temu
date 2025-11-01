@@ -37,7 +37,7 @@ make -C temu/src/test/asm/instr-test
 
 ```
 make -C temu/src/test/asm/riscv-test
-find temu/src/test/asm/riscv-test/repo/isa/ -name '*-p-*.bin' -exec bash -c "echo {}; (temu/build/install/temu/bin/temu '{}' 2>&1 | grep 'with code 0' >/dev/null) || echo 'ERROR: Test failed {}'" \;
+find temu/src/test/asm/riscv-test/build/ -name '*-p-*.bin' -exec bash -c "echo {}; (temu/build/install/temu/bin/temu '{}' 2>&1 | grep 'with code 0' >/dev/null) || echo 'ERROR: Test failed {}'" \;
 ```
 
 ## Board-level Tests
@@ -50,14 +50,14 @@ They require a more complete environment and will interact with the devices like
 
 ```
 make -C temu/src/test/abstract-machine coremark
-temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/coremark/build/coremark-riscv64-nemu.bin
+temu/build/install/temu/bin/temu temu/src/test/abstract-machine/build/coremark-riscv64-nemu.bin
 ```
 
 You can specify the number of iterations by setting the `ITERATIONS` variable:
 
 ```
-make -C temu/src/test/abstract-machine coremark ITERATIONS=300000
-temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/coremark/build/coremark-10000-iteration-riscv64-nemu.bin
+make -C temu/src/test/abstract-machine coremark ITERATIONS=100000
+temu/build/install/temu/bin/temu temu/src/test/abstract-machine/build/coremark-10000-iteration-riscv64-nemu.bin
 ```
 
 Result:
@@ -79,7 +79,7 @@ CoreMark Iterations/Sec 9993004.90
 website.lihan.temu.cpu.HaltException: Halt at 80002794 with code 0
 ```
 
-Compared to NEMU (100x faster):
+100x faster than NEMU:
 ```
 Welcome to riscv32-NEMU!
 For help, type "help"
@@ -103,7 +103,25 @@ CoreMark Iterations/Sec 98144.10
 [src/cpu/cpu-exec.c:117 statistic] simulation frequency = 30,262,184 inst/s
 ```
 
-Compared to native (3x slower):
+0.7x faster than QEMU with TCG:
+```
+Running CoreMark for 300000 iterations
+2K performance run parameters for coremark.
+CoreMark Size    : 666
+Total time (ms)  : 50956
+Iterations       : 300000
+Compiler version : GCC10.2.1 20210110
+seedcrc          : 0xe9f5
+[0]crclist       : 0xe714
+[0]crcmatrix     : 0x1fd7
+[0]crcstate      : 0x8e3a
+[0]crcfinal      : 0xcc42
+Finished in 50956 ms.
+==================================================
+CoreMark Iterations/Sec 5887432.29
+```
+
+3x slower than native:
 ```
 Running CoreMark for 300000 iterations
 2K performance run parameters for coremark.
@@ -126,7 +144,7 @@ CoreMark Iterations/Sec 29700029.70
 ```
 make -C temu/src/test/abstract-machine microbench
 # make -C temu/src/test/abstract-machine microbench ARCH=riscv32-nemu
-temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/microbench/build/microbench-riscv64-nemu.bin
+temu/build/install/temu/bin/temu temu/src/test/abstract-machine/build/microbench-riscv64-nemu.bin
 ```
 
 Result:
@@ -232,14 +250,14 @@ You can comment out the `HAS_GUI` macro in `temu/src/test/abstract-machine/repo/
 
 ```
 make -C temu/src/test/abstract-machine fceux
-temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/fceux/build/fceux-riscv64-nemu.bin
+temu/build/install/temu/bin/temu temu/src/test/abstract-machine/build/fceux-riscv64-nemu.bin
 ```
 
 You can switch to other test programs in the `temu/src/test/abstract-machine/repo/share/games/nes/rom` directory by specifying the mainargs option:
 
 ```
 make -C temu/src/test/abstract-machine fceux mainargs=mario
-temu/build/install/temu/bin/temu temu/src/test/abstract-machine/repo/apps/fceux/build/fceux-riscv64-nemu.bin
+temu/build/install/temu/bin/temu temu/src/test/abstract-machine/build/fceux-riscv64-nemu.bin
 ```
 
 ## OS-level Tests
@@ -249,13 +267,12 @@ These tests are located in the `temu/src/test/rt-thread` directory and run a sim
 To build rt-thread, you need to have `scons` installed on your system.
 
 ```
-make -C temu/src/test/rt-thread
-temu/build/install/temu/bin/temu temu/src/test/rt-thread/repo/bsp/abstract-machine/build/rtthread-riscv64-nemu.bin
+make -C temu/src/test/rt-thread-am
+temu/build/install/temu/bin/temu temu/src/test/rt-thread-am/repo/bsp/abstract-machine/build/rtthread-riscv64-nemu.bin
 ```
 
 ```
 make -C temu/src/test/rt-thread
-RTT_CC_PREFIX=riscv64-unknown-linux-musl- scons --verbose
 temu/build/install/temu/bin/temu temu/src/test/rt-thread/repo/bsp/abstract-machine/build/rtthread-riscv64-nemu.bin
 ```
 

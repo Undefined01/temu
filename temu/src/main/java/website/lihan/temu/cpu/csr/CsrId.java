@@ -4,6 +4,7 @@ public class CsrId {
   public static final int SSTATUS = 0x100;
   public static final int SIE = 0x104;
   public static final int STVEC = 0x105;
+  public static final int SCOUNTEREN = 0x106;
   public static final int SSCRATCH = 0x140;
   public static final int SEPC = 0x141;
   public static final int SCAUSE = 0x142;

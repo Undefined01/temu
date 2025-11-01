@@ -8,6 +8,7 @@ import website.lihan.temu.cpu.InterruptException;
 import website.lihan.temu.cpu.JumpException;
 import website.lihan.temu.cpu.Opcodes.SystemFunct12;
 import website.lihan.temu.cpu.Opcodes.SystemFunct3;
+import website.lihan.temu.cpu.Opcodes.SystemFunct7;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.RvUtils.IInstruct;
 import website.lihan.temu.cpu.csr.MStatus;
@@ -75,6 +76,11 @@ public class SystemOp {
   }
 
   private static void doPriv(Rv64State cpu, long pc, IInstruct i) {
+    switch (i.funct7()) {
+      case SystemFunct7.SFENCE_VMA -> {
+        return;
+      }
+    }
     switch (i.imm()) {
       case SystemFunct12.ECALL -> {
         switch (cpu.getPrivilegeLevel()) {
@@ -103,7 +109,7 @@ public class SystemOp {
       }
       default ->
           throw IllegalInstructionException.create(
-              "Unsupported PRIV funct12: pc=%08x, funct12=%03x", pc, i.imm());
+              "Unsupported PRIV funct12=%012b at pc=%08x", i.imm(), pc);
     }
   }
 
@@ -119,6 +125,7 @@ public class SystemOp {
     // Assumes all interrupts are delegated to S-mode
     cpu.getCsrFile().sepc.setValue(e.pc);
     cpu.getCsrFile().scause.setValue(e.cause);
+    cpu.getCsrFile().stval.setValue(e.stval);
     final var mstatus = new MStatus(cpu.getCsrFile().mstatus.getValue());
     final var sstatus = new SStatus(mstatus);
     sstatus.setSPP(1);

@@ -27,7 +27,7 @@ public class CallNode extends Node {
     if (directCallNode == null) {
       CompilerDirectives.transferToInterpreterAndInvalidate();
       var context = Rv64Context.get(this);
-      var targetNode = context.getExecPageCache().getByEntryPoint(targetPc, cpu);
+      var targetNode = context.getExecPageCache().getByEntryPoint(cpu, targetPc);
       this.target = targetNode.getCallTarget();
       this.directCallNode = DirectCallNode.create(target);
     }

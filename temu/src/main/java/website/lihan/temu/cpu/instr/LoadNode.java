@@ -3,87 +3,89 @@ package website.lihan.temu.cpu.instr;
 import static website.lihan.temu.cpu.RvUtils.BYTES;
 
 import com.oracle.truffle.api.dsl.Cached;
+import com.oracle.truffle.api.dsl.ImportStatic;
 import com.oracle.truffle.api.dsl.Specialization;
 import com.oracle.truffle.api.library.CachedLibrary;
 import com.oracle.truffle.api.nodes.Node;
+import com.oracle.truffle.api.nodes.NodeInfo;
+
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.cpu.IllegalInstructionException;
+import website.lihan.temu.cpu.InterruptException;
+import website.lihan.temu.cpu.InterruptException.Cause;
+import website.lihan.temu.cpu.RvUtils.IInstruct;
+import website.lihan.temu.cpu.instr.MemoryAccess.AccessKind;
+import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.device.Bus;
 import website.lihan.temu.device.DeviceLibrary;
 
+@ImportStatic({MemoryAccess.class, AccessKind.class})
 public abstract class LoadNode extends Node {
   public final int length;
+  public final boolean isValid;
   public final boolean signedExtend;
-  public final int rs1;
   public final int rd;
+  public final int rs1;
   public final int offset;
-  private final Bus bus;
+  public final long pc;
 
-  public LoadNode(int length, boolean signedExtend, int rs1, int rd, int offset) {
-    assert length == 1 || length == 2 || length == 4 || length == 8;
+  protected final Bus bus;
+  protected MemoryAccess.Mapping cache;
 
-    this.length = length;
-    this.signedExtend = signedExtend;
-    this.rs1 = rs1;
-    this.rd = rd;
-    this.offset = offset;
+  public LoadNode(IInstruct i, long pc) {
+    length =
+        switch (i.funct3() & 0b11) {
+          case 0b00 -> 1;
+          case 0b01 -> 2;
+          case 0b10 -> 4;
+          case 0b11 -> 8;
+          default -> 0;
+        };
+    isValid = length != 0;
+    signedExtend = (i.funct3() & 0b100) == 0;
+
+    this.rs1 = i.rs1();
+    this.rd = i.rd();
+    this.offset = i.imm();
+    this.pc = pc;
 
     this.bus = Rv64Context.get(this).getBus();
   }
 
-  public abstract long execute(long addr);
+  public LoadNode(long pc, int length, boolean signedExtend) {
+    this.length = length;
+    this.isValid = true;
+    this.signedExtend = signedExtend;
+    this.rd = 0;
+    this.rs1 = 0;
+    this.offset = 0;
+    this.pc = pc;
+    this.bus = Rv64Context.get(this).getBus();
+  }
+
+  public void throwIfInvalid() {
+    if (!isValid) {
+      throw IllegalInstructionException.create(pc, 0);
+    }
+  }
+
+  public abstract long execute(Rv64State cpu, long vAddr);
 
   @Specialization(
-      guards = {"startAddress <= addr", "addr < endAddress"},
-      limit = "1")
+      guards = {"cache.inRange(vAddr)"},
+      limit = "2")
   long doLoad(
-      long addr,
-      @Cached("findDevice(addr)") Object device,
-      @CachedLibrary("device") DeviceLibrary deviceLib,
-      @Cached("deviceLib.getStartAddress(device)") long startAddress,
-      @Cached("deviceLib.getEndAddress(device)") long endAddress) {
-    if (signedExtend) {
-      return switch (length) {
-        case 1 -> deviceLib.read1(device, addr - startAddress);
-        case 2 -> deviceLib.read2(device, addr - startAddress);
-        case 4 -> deviceLib.read4(device, addr - startAddress);
-        case 8 -> deviceLib.read8(device, addr - startAddress);
-        default -> 0;
-      };
-    } else {
-      return switch (length) {
-        case 1 -> (long) deviceLib.read1(device, addr - startAddress) & 0xFFL;
-        case 2 -> (long) deviceLib.read2(device, addr - startAddress) & 0xFFFFL;
-        case 4 -> (long) deviceLib.read4(device, addr - startAddress) & 0xFFFFFFFFL;
-        case 8 -> deviceLib.read8(device, addr - startAddress);
-        default -> 0;
-      };
-    }
+      Rv64State cpu,
+      long vAddr,
+      @Cached("queryAddr(cpu, bus, vAddr, Load, true)") MemoryAccess.Mapping cache) {
+    return cache.load(pc, vAddr, length, signedExtend);
   }
 
   @Specialization(replaces = "doLoad")
-  long doLoadUncached(long addr) {
-    var data = new byte[length];
-    bus.executeRead(addr, data, length);
-    if (signedExtend) {
-      return switch (length) {
-        case 1 -> BYTES.getByte(data, 0);
-        case 2 -> BYTES.getShort(data, 0);
-        case 4 -> BYTES.getInt(data, 0);
-        case 8 -> BYTES.getLong(data, 0);
-        default -> 0;
-      };
-    } else {
-      return switch (length) {
-        case 1 -> (long) BYTES.getByte(data, 0) & 0xFFL;
-        case 2 -> (long) BYTES.getShort(data, 0) & 0xFFFFL;
-        case 4 -> (long) BYTES.getInt(data, 0) & 0xFFFFFFFFL;
-        case 8 -> BYTES.getLong(data, 0);
-        default -> 0;
-      };
+  long doLoadUncached(Rv64State cpu, long vAddr) {
+    if (cache == null || !(cache.vAddrStart() <= vAddr && vAddr < cache.vAddrEnd())) {
+      cache = MemoryAccess.queryAddr(cpu, bus, vAddr, AccessKind.Load, false);
     }
-  }
-
-  Object findDevice(long addr) {
-    return bus.findDevice(addr);
+    return cache.load(pc, vAddr, length, signedExtend);
   }
 }

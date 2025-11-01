@@ -8,14 +8,15 @@ public class CsrFile {
   public final Dummy mhartid = new Dummy();
 
   public final SStatus sstatus = new SStatus(status);
-  public final Dummy sie = new Dummy();
+  public final Dummy sie = new Dummy("sie", 0, 0x222L, -1L);
   public final Dummy stvec = new Dummy();
+  public final Dummy scounteren = new Dummy();
   public final Dummy sscratch = new Dummy();
   public final Dummy sepc = new Dummy();
   public final Dummy scause = new Dummy();
   public final Dummy stval = new Dummy();
-  public final Dummy sip = new Dummy();
-  public final Dummy satp = new Dummy();
+  public final Dummy sip = new Dummy("sip", 0, 0x222L, -1L);
+  public final Satp satp = new Satp();
 
   public final MStatus mstatus = status;
   public final Dummy misa = new Dummy();
@@ -33,6 +34,7 @@ public class CsrFile {
       case SSTATUS -> sstatus;
       case SIE -> sie;
       case STVEC -> stvec;
+      case SCOUNTEREN -> scounteren;
       case SSCRATCH -> sscratch;
       case SEPC -> sepc;
       case SCAUSE -> scause;

@@ -12,16 +12,18 @@ repo/patched: repo/README.md
 	cd repo/ && git apply ../patches/riscv*.patch
 	touch repo/patched
 
-rv64ui: repo/patched
- 	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- rv64ui
- 	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- rv64um
-	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- rv64mi
+SUITES := rv64ui rv64um rv64mi
+
+$(SUITES): repo/patched
+	mkdir -p build/$@
+	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- $@
+	mv repo/isa/$@-p-* build/$@/
 
 clean:
 	$(MAKE) -C repo/isa clean
 	rm repo/isa/rv*-*-*
 
-all: rv64ui
+all: $(SUITES)
 .DEFAULT_GOAL = all
 
 .PHONY: all clean

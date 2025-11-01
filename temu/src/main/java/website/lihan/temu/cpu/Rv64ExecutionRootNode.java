@@ -32,21 +32,14 @@ public class Rv64ExecutionRootNode extends RootNode {
         if (cpu.isInterruptEnabled() && RTC.checkInterrupt()) {
           throw InterruptException.create(pc, InterruptException.Cause.STIMER);
         }
-        // long pageAddr = pc & PAGE_ADDR_MASK;
-        // var page = entryPoints.get(pageAddr);
-        // if (page == null) {
-        //   CompilerDirectives.transferToInterpreterAndInvalidate();
-        //   page = EconomicMap.create();
-        //   entryPoints.put(pageAddr, page);
-        // }
-        // var subAddr = (int)(pc & ~PAGE_ADDR_MASK);
-        var rootNode = context.getExecPageCache().getByEntryPoint(pc, cpu);
+        var rootNode = context.getExecPageCache().getByEntryPoint(cpu, pc);
         callNode.call(rootNode.getCallTarget(), 0);
       } catch (JumpException e) {
         // Utils.printf("JumpException to 0x%08x\n", e.getTargetPc());
         pc = e.getTargetPc();
       } catch (InterruptException e) {
         pc = SystemOp.doInterrupt(cpu, e);
+        // Utils.printf("InterruptException from 0x%08x to 0x%08x, cause=%d\n", e.pc, pc, e.cause);
       } catch (HaltException e) {
         Utils.printf("%s\n", e);
         return 0;

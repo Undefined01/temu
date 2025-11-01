@@ -17,6 +17,8 @@ public class Opcodes {
   public static final int OP_IMM_32 = 0b0011011;
   public static final int FENCE = 0b0001111;
 
+  public static final int AMO = 0b0101111;
+
   public static final int SYSTEM = 0b1110011;
 
   public class SystemFunct3 {
@@ -28,6 +30,10 @@ public class Opcodes {
     public static final int CSRRWI = 0b101;
     public static final int CSRRSI = 0b110;
     public static final int CSRRCI = 0b111;
+  }
+
+  public class SystemFunct7 {
+    public static final int SFENCE_VMA = 0b0001001;
   }
 
   public class SystemFunct12 {

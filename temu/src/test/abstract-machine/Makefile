@@ -19,11 +19,27 @@ $(APPS): abstract-machine
 	AM_HOME=$(shell pwd)/repo $(MAKE) -C repo/apps/$@ ARCH=$(ARCH) LINUX_GNU_TOOLCHAIN=1 $($@_extra_args)
 	mkdir -p build
 	cp repo/apps/$@/build/$@*.bin build/
+	cp repo/apps/$@/build/$@*.txt build/
+
+
+AMTESTS := amtest-sv39 amtest-sv39-hp amtest-sv39-ppn
+
+mainargs_for_amtest-sv39 := s
+# SV39 Hugepage
+mainargs_for_amtest-sv39-hp := f
+# SV39 raise access fault when high 20 bits of ppn is not zero
+mainargs_for_amtest-sv39-ppn := g
+
+$(AMTESTS): abstract-machine
+	AM_HOME=$(shell pwd)/repo $(MAKE) -C repo/tests/amtest ARCH=$(ARCH) LINUX_GNU_TOOLCHAIN=1 mainargs=$(mainargs_for_$@)
+	mkdir -p build
+	cp repo/tests/amtest/build/amtest-*.bin build/$@-$(ARCH).bin
+	cp repo/tests/amtest/build/amtest-*.txt build/$@-$(ARCH).txt
 
 clean:
 	find . -name build -exec rm -r {} \;
 
-all: $(APPS)
+all: $(APPS) $(AMTESTS)
 .DEFAULT_GOAL = all
 
-.PHONY: all clean abstract-machine $(APPS)
+.PHONY: all clean abstract-machine $(APPS) $(AMTESTS)

@@ -6,6 +6,7 @@ import com.oracle.truffle.api.nodes.ControlFlowException;
 public class InterruptException extends ControlFlowException {
   public final long pc;
   public final long cause;
+  public final long stval;
 
   public static final class Cause {
     public static final long INTERRUPT = (1L << 63);
@@ -39,13 +40,19 @@ public class InterruptException extends ControlFlowException {
     public static final long STORE_PAGE_FAULT = 15;
   }
 
-  private InterruptException(long pc, long cause) {
+  private InterruptException(long pc, long cause, long stval) {
     this.pc = pc;
     this.cause = cause;
+    this.stval = stval;
   }
 
   @TruffleBoundary
   public static InterruptException create(long pc, long cause) {
-    return new InterruptException(pc, cause);
+    return new InterruptException(pc, cause, 0L);
+  }
+
+  @TruffleBoundary
+  public static InterruptException create(long pc, long cause, long stval) {
+    return new InterruptException(pc, cause, stval);
   }
 }
