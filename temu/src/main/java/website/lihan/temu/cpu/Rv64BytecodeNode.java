@@ -11,6 +11,7 @@ import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
 import java.util.ArrayList;
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.Opcodes.SystemFunct3;
 import website.lihan.temu.cpu.RvUtils.BInstruct;
 import website.lihan.temu.cpu.RvUtils.IInstruct;
@@ -22,13 +23,13 @@ import website.lihan.temu.cpu.instr.BranchNode;
 import website.lihan.temu.cpu.instr.CallNode;
 import website.lihan.temu.cpu.instr.CsrRWNode;
 import website.lihan.temu.cpu.instr.JalNode;
+import website.lihan.temu.cpu.instr.JalrNodeGen;
 import website.lihan.temu.cpu.instr.LoadNode;
 import website.lihan.temu.cpu.instr.LoadNodeGen;
 import website.lihan.temu.cpu.instr.Op;
 import website.lihan.temu.cpu.instr.Op32;
 import website.lihan.temu.cpu.instr.OpImm;
 import website.lihan.temu.cpu.instr.OpImm32;
-import website.lihan.temu.cpu.instr.RvIndirectCallNodeGen;
 import website.lihan.temu.cpu.instr.StoreNode;
 import website.lihan.temu.cpu.instr.StoreNodeGen;
 import website.lihan.temu.cpu.instr.SystemOp;
@@ -38,7 +39,9 @@ import website.lihan.temu.device.RTC;
 public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   @CompilationFinal long baseAddr;
   @CompilationFinal int entryBci;
-  @Child Bus bus;
+
+  final Rv64Context context;
+  final Bus bus;
 
   @CompilationFinal Rv64State cpu;
 
@@ -59,7 +62,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     this.entryBci = entryBci;
     this.cpu = cpu;
 
-    var context = Rv64Context.get(this);
+    this.context = Rv64Context.get(this);
     this.bus = context.getBus();
     this.nodes = null;
   }
@@ -104,7 +107,14 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
       int instr = BYTES.getInt(bc, bci);
       CompilerAsserts.partialEvaluationConstant(instr);
 
-      website.lihan.temu.Utils.printf("pc=%08x: %08x, sp=%08x, ra=%08x\n", baseAddr + bci, instr, cpu.getReg(2), cpu.getReg(1));
+      // if (getPc(bci) == 0xffffffff8028e788L) {
+      //   Utils.printf("memmove %08x <- %08x, len=%d\n", cpu.getReg(10), cpu.getReg(11), cpu.getReg(12));
+      // }
+      // if (getPc(bci) == 0xffffffff8028ecc4L) {
+      //   Utils.printf("clear_user %08x, len=%d\n", cpu.getReg(10), cpu.getReg(11));
+      // }
+      // website.lihan.temu.Utils.printf("pc=%08x: %08x, sp=%08x, ra=%08x\n", baseAddr + bci, instr,
+      // cpu.getReg(2), cpu.getReg(1));
       int nextBci = bci + 4;
 
       int opcode = instr & 0x7f;
@@ -129,7 +139,9 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
             // If the following ret instruction (jalr zero, 0(ra)) is jumping back to
             // the caller (ra == current_pc + 4), we can optimize out the JumpException
             // and simply return to the caller directly.
-            CallNode.class.cast(nodes[nodeIdx]).call(cpu);
+            var node = CallNode.class.cast(nodes[nodeIdx]);
+            Utils.printf("Calling from %08x to %08x\n", getPc(bci), node.targetPc);
+            node.call(cpu);
           } else {
             final var jalNode = JalNode.class.cast(nodes[nodeIdx]);
             final var targetPc = jalNode.targetPc;
@@ -145,17 +157,20 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         }
         case Opcodes.JALR -> {
           final var nodeIdx = (instr >> 8);
-          final var node = RvIndirectCallNodeGen.class.cast(nodes[nodeIdx]);
+          final var node = JalrNodeGen.class.cast(nodes[nodeIdx]);
           // An optimization in the JalNode above takes an assumption that most jalr instructions
           // are function returns (jalr zero, 0(ra)).
           // And if target address equals to the return address of previous `jal ra, xx`, we can
           // optimize out the JumpException throwing and just return to the caller directly.
           final var nextPc = cpu.getReg(node.rs1) + node.imm;
           if (node.rd == 1) {
+            Utils.printf("Indirect call from %08x to %08x\n", getPc(bci), nextPc);
             node.execute(cpu);
           } else if (node.rd == 0 && CallNode.jalrIsReturn(frame, nextPc)) {
+            Utils.printf("Returning from %08x to %08x\n", getPc(bci), nextPc);
             return 0;
           } else {
+            Utils.printf("Indirect jump from %08x to %08x\n", getPc(bci), nextPc);
             cpu.setReg(node.rd, node.returnPc);
             // nextBci must be a constant during explode looping. But the targetPc of jalr
             // instruction
@@ -181,9 +196,19 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         }
         case Opcodes.LOAD -> doLoad(cpu, bci, instr);
         case Opcodes.STORE -> doStore(cpu, bci, instr);
-        case Opcodes.SYSTEM -> SystemOp.execute(cpu, getPc(bci), instr, nodes);
-        case Opcodes.FENCE -> {
-          // No operation
+        case Opcodes.SYSTEM -> SystemOp.execute(context, cpu, getPc(bci), instr, nodes);
+        case Opcodes.MEM_MISC -> {
+          final var i = IInstruct.decode(instr);
+          switch (i.funct3()) {
+            case 0b000 -> {
+              // FENCE
+            }
+            case 0b001 -> {
+              context.execPageCache.clear();
+              throw JumpException.create(getPc(bci) + 4);
+            }
+            default -> throw IllegalInstructionException.create(getPc(bci), instr);
+          }
         }
         case Opcodes.AMO -> {
           var node = Amo.class.cast(nodes[(instr >> 8)]);
@@ -242,7 +267,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           final var i = IInstruct.decode(instr);
           final var returnPc = pc + 4;
           final var nodeIdx = nodeList.size();
-          nodeList.add(RvIndirectCallNodeGen.create(i.rs1(), i.imm(), i.rd(), returnPc));
+          nodeList.add(JalrNodeGen.create(i.rs1(), i.imm(), i.rd(), returnPc));
           instr = Opcodes.JALR | (nodeIdx << 8);
           BYTES.putInt(bc, bci, instr);
         }
@@ -284,7 +309,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
                 SystemFunct3.CSRRSI,
                 SystemFunct3.CSRRCI -> {
               final var nodeIdx = nodeList.size();
-              nodeList.add(new CsrRWNode(i.imm() & 0xfff, i.rs1(), i.rd(), i.funct3()));
+              nodeList.add(new CsrRWNode(i, pc));
               instr = Opcodes.SYSTEM | (0x80) | (nodeIdx << 8);
               BYTES.putInt(bc, bci, instr);
             }

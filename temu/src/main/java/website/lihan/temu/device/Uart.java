@@ -9,7 +9,7 @@ import java.util.Queue;
 @ExportLibrary(DeviceLibrary.class)
 public final class Uart {
   private static final long BASE_ADDRESS = 0x10000000L;
-  
+
   // UART register offsets
   private static final int RHR = 0; // Receiver Holding Register (read)
   private static final int THR = 0; // Transmitter Holding Register (write)
@@ -20,24 +20,24 @@ public final class Uart {
   private static final int LSR = 5; // Line Status Register
   private static final int MSR = 6; // Modem Status Register
   private static final int SCR = 7; // Scratch Register
-  
+
   // IER bits
   private static final byte IER_RX_ENABLE = (byte) 0x01;
   private static final byte IER_TX_ENABLE = (byte) 0x02;
-  
+
   // ISR bits
   private static final byte ISR_NO_INT = (byte) 0x01;
   private static final byte ISR_TX_EMPTY = (byte) 0x02;
   private static final byte ISR_RX_AVAIL = (byte) 0x04;
-  
+
   // LSR flags
   private static final byte LSR_RX_READY = (byte) 0x01; // Data ready
   private static final byte LSR_TX_EMPTY = (byte) 0x20; // THR empty
-  private static final byte LSR_TX_IDLE = (byte) 0x40;  // THR empty and line idle
-  
+  private static final byte LSR_TX_IDLE = (byte) 0x40; // THR empty and line idle
+
   // LCR bits
   private static final byte LCR_DLAB = (byte) 0x80; // Divisor Latch Access Bit
-  
+
   private final Queue<Byte> rxQueue = new LinkedList<>();
   private byte ier = 0;
   private byte lcr = 0;
@@ -45,11 +45,11 @@ public final class Uart {
   private byte scr = 0;
   private byte divisorLow = 0;
   private byte divisorHigh = 0;
-  
+
   // Interrupt state
   private boolean txInterruptPending = false;
   private boolean rxInterruptPending = false;
-  
+
   @ExportMessage
   public long getStartAddress() {
     return BASE_ADDRESS;
@@ -179,10 +179,8 @@ public final class Uart {
     }
     return length;
   }
-  
-  /**
-   * Get the current interrupt status register value
-   */
+
+  /** Get the current interrupt status register value */
   private byte getInterruptStatus() {
     // Priority: RX > TX (standard UART priority)
     if (rxInterruptPending && (ier & IER_RX_ENABLE) != 0) {
@@ -195,10 +193,8 @@ public final class Uart {
     }
     return ISR_NO_INT;
   }
-  
-  /**
-   * Update interrupt pending flags based on current state
-   */
+
+  /** Update interrupt pending flags based on current state */
   private void updateInterrupts() {
     // Set TX interrupt if enabled and transmitter is idle
     if ((ier & IER_TX_ENABLE) != 0) {
@@ -206,22 +202,18 @@ public final class Uart {
     }
     // RX interrupt is already set when data arrives
   }
-  
-  /**
-   * Check if an interrupt is pending
-   * This should be called by the interrupt controller
-   */
+
+  /** Check if an interrupt is pending This should be called by the interrupt controller */
   public boolean isInterruptPending() {
-    if ((rxInterruptPending && (ier & IER_RX_ENABLE) != 0) ||
-        (txInterruptPending && (ier & IER_TX_ENABLE) != 0)) {
+    if ((rxInterruptPending && (ier & IER_RX_ENABLE) != 0)
+        || (txInterruptPending && (ier & IER_TX_ENABLE) != 0)) {
       return true;
     }
     return false;
   }
-  
+
   /**
-   * Add a byte to the receive queue (for input simulation)
-   * This sets the RX interrupt pending flag
+   * Add a byte to the receive queue (for input simulation) This sets the RX interrupt pending flag
    */
   @TruffleBoundary
   public void receiveData(byte data) {
@@ -230,10 +222,8 @@ public final class Uart {
       rxInterruptPending = true;
     }
   }
-  
-  /**
-   * Receive multiple bytes (for convenience)
-   */
+
+  /** Receive multiple bytes (for convenience) */
   @TruffleBoundary
   public void receiveString(String str) {
     for (char c : str.toCharArray()) {

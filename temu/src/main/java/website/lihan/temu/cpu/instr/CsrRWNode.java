@@ -3,9 +3,11 @@ package website.lihan.temu.cpu.instr;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.IllegalInstructionException;
+import website.lihan.temu.cpu.RvUtils.IInstruct;
 import website.lihan.temu.cpu.csr.CsrLibrary;
 
 public class CsrRWNode extends Node {
+  public final long pc;
   public final int csrId;
   public final int rs1;
   public final int rd;
@@ -14,11 +16,12 @@ public class CsrRWNode extends Node {
   private final Object csr;
   @Child private CsrLibrary csrLib;
 
-  public CsrRWNode(int csrId, int rs1, int rd, int funct3) {
-    this.csrId = csrId;
-    this.rs1 = rs1;
-    this.rd = rd;
-    this.funct3 = funct3;
+  public CsrRWNode(IInstruct i, long pc) {
+    this.pc = pc;
+    this.csrId = i.imm() & 0xfff;
+    this.rs1 = i.rs1();
+    this.rd = i.rd();
+    this.funct3 = i.funct3();
 
     var context = Rv64Context.get(this);
     this.csr = context.getState().getCsrById(csrId);

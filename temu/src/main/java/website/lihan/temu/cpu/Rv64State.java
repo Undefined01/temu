@@ -2,6 +2,7 @@ package website.lihan.temu.cpu;
 
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
+import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.csr.CsrFile;
 
 public final class Rv64State {
@@ -10,8 +11,21 @@ public final class Rv64State {
 
   private final CsrFile csrs = new CsrFile();
 
+  @CompilationFinal private Rv64Context context;
+
   // public long pc = 0x80000000L;
-  @CompilationFinal private int privilegeLevel = 1;
+  private PrivilegeLevel privilegeLevel = PrivilegeLevel.S;
+
+  public void setContext(Rv64Context context) {
+    if (this.context != null) {
+      throw CompilerDirectives.shouldNotReachHere("Context can only be set once");
+    }
+    this.context = context;
+  }
+
+  public Rv64Context getContext() {
+    return context;
+  }
 
   public long getReg(int reg) {
     if (reg == 0) {
@@ -34,15 +48,21 @@ public final class Rv64State {
     return csrs;
   }
 
-  public int getPrivilegeLevel() {
+  public PrivilegeLevel getPrivilegeLevel() {
     return privilegeLevel;
+  }
+
+  public void setPrivilegeLevel(PrivilegeLevel privilegeLevel) {
+    this.privilegeLevel = privilegeLevel;
   }
 
   public boolean isInterruptEnabled() {
     switch (privilegeLevel) {
-      case 1:
+      case U:
+        return true;
+      case S:
         return csrs.mstatus.getSIE();
-      case 3:
+      case M:
         return csrs.mstatus.getMIE();
       default:
         throw CompilerDirectives.shouldNotReachHere();

@@ -3,6 +3,8 @@ package website.lihan.temu.cpu.csr;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
 
+import website.lihan.temu.Utils;
+
 @ExportLibrary(CsrLibrary.class)
 public class MStatus {
   private long value;
@@ -31,7 +33,14 @@ public class MStatus {
   public static final int MPP_BITS = 2;
   public static final int MPP_MASK = ((1 << MPP_BITS) - 1) << MPP_SHIFT;
 
-  public static final long TRIVIAL_MASK = MIE_MASK | MPIE_MASK | SIE_MASK | SPIE_MASK;
+  public static final int SUM_SHIFT = 18;
+  public static final int SUM_BITS = 1;
+  public static final int SUM_MASK = ((1 << SUM_BITS) - 1) << SUM_SHIFT;
+
+
+  public static final long TRIVIAL_MASK = MIE_MASK | MPIE_MASK | SIE_MASK | SPIE_MASK | SUM_MASK;
+  public static final long UNIMPLEMENTED_MASK =
+      ~(TRIVIAL_MASK | MPP_MASK | SPP_MASK); // All other bits are unimplemented
 
   public MStatus() {
     this(MIE_MASK | MPIE_MASK);
@@ -54,6 +63,11 @@ public class MStatus {
     }
     if ((diff & SPP_MASK) != 0) {
       setSPP((newValue & SPP_MASK) >> SPP_SHIFT);
+    }
+    if ((diff & UNIMPLEMENTED_MASK) != 0) {
+      Utils.printf(
+          "Warning: Attempt to write to unimplemented bits of CSR mstatus. newValue=0x%016X, unimplementedMask=0x%016X\n",
+          newValue, UNIMPLEMENTED_MASK);
     }
     value ^= (diff & TRIVIAL_MASK);
   }
@@ -98,14 +112,18 @@ public class MStatus {
   }
 
   // Supervisor Previous Privilege Mode
-  public long getSPP() {
-    return (value & SPP_MASK) >> SPP_SHIFT;
+  public int getSPP() {
+    return (int)((value & SPP_MASK) >> SPP_SHIFT);
   }
 
   // Supervisor Previous Privilege Mode
   public void setSPP(long spp) {
     assert spp >= 0 && spp <= SPP_MASK;
-    value |= SPP_MASK;
+    if (spp == 0) {
+      value &= ~SPP_MASK;
+    } else {
+      value |= SPP_MASK;
+    }
   }
 
   // Supervisor Interrupt Enable

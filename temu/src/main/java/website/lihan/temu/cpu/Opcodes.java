@@ -15,7 +15,7 @@ public class Opcodes {
   public static final int OP_IMM = 0b0010011;
   public static final int OP_32 = 0b0111011;
   public static final int OP_IMM_32 = 0b0011011;
-  public static final int FENCE = 0b0001111;
+  public static final int MEM_MISC = 0b0001111;
 
   public static final int AMO = 0b0101111;
 

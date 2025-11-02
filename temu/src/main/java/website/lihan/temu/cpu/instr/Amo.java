@@ -1,21 +1,17 @@
 package website.lihan.temu.cpu.instr;
 
+import static website.lihan.temu.cpu.instr.Amo.Funct5.*;
+
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.nodes.Node;
 import com.oracle.truffle.api.nodes.Node.Child;
-
 import website.lihan.temu.cpu.IllegalInstructionException;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.RvUtils;
-import website.lihan.temu.device.Bus;
-
-import static website.lihan.temu.cpu.instr.Amo.Funct5.*;
 
 public class Amo extends Node {
-  @Child
-  private LoadNode loadNode;
-  @Child
-  private StoreNode storeNode;
+  @Child private LoadNode loadNode;
+  @Child private StoreNode storeNode;
 
   private final long pc;
   private final boolean isValid;
@@ -32,11 +28,12 @@ public class Amo extends Node {
     this.rd = r.rd();
     this.rs1 = r.rs1();
     this.rs2 = r.rs2();
-    var length = switch (r.funct3()) {
-      case Funct3.W -> 4;
-      case Funct3.D -> 8;
-      default -> 0;
-    };
+    var length =
+        switch (r.funct3()) {
+          case Funct3.W -> 4;
+          case Funct3.D -> 8;
+          default -> 0;
+        };
     this.isValid = length != 0;
     this.funct = r.funct7() >> 2;
     this.aq = (r.funct7() & 0b10) != 0;
@@ -122,6 +119,7 @@ public class Amo extends Node {
     public static final int W = 0b010;
     public static final int D = 0b011;
   }
+
   public static class Funct5 {
     public static final int LR = 0b00010;
     public static final int SC = 0b00011;

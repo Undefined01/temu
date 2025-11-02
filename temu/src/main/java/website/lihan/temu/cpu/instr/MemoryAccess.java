@@ -1,17 +1,22 @@
 package website.lihan.temu.cpu.instr;
 
+import com.oracle.truffle.api.CompilerDirectives;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import website.lihan.temu.Rv64Context;
+import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.InterruptException;
 import website.lihan.temu.cpu.InterruptException.Cause;
-
-import com.oracle.truffle.api.CompilerDirectives;
-
-import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.Rv64State;
+import website.lihan.temu.cpu.csr.Satp;
+import website.lihan.temu.cpu.instr.MemoryAccess.AccessKind;
+import website.lihan.temu.cpu.instr.MemoryAccess.Mapping;
+import website.lihan.temu.cpu.instr.MemoryAccess.MemoryException;
 import website.lihan.temu.device.Bus;
 import website.lihan.temu.device.DeviceLibrary;
 
 public class MemoryAccess {
-  public static Mapping queryAddr(Rv64State cpu, Bus bus, long vAddr, AccessKind kind, boolean cached) {
+  public static Mapping queryAddr(
+      Rv64State cpu, Bus bus, long vAddr, AccessKind kind, boolean cached) {
     var satp = cpu.getCsrFile().satp.getValue();
     if (satp == 0) {
       var device = bus.findDevice(vAddr);
@@ -23,9 +28,10 @@ public class MemoryAccess {
       }
       var startAddr = deviceLib.getStartAddress(device);
       var endAddr = deviceLib.getEndAddress(device);
-      return new Mapping(MemoryException.None, device, deviceLib, startAddr, endAddr, startAddr, -startAddr);
+      return new Mapping(
+          MemoryException.None, device, deviceLib, startAddr, endAddr, startAddr, -startAddr);
     } else {
-      var result = MmuRv39.getPhysicalAddressSpace(bus, satp, vAddr, kind);
+      var result = MmuSv39.getPhysicalAddressSpace(bus, satp, vAddr, kind);
       if (result.exception() == MemoryException.None) {
         var pAddr = result.translate(vAddr);
         var device = bus.findDevice(pAddr);
@@ -43,14 +49,41 @@ public class MemoryAccess {
         var pAddrEnd = Math.min(deviceEnd, pAddrStart + result.addrMask() + 1);
         var vAddrStart = vAddr - (pAddr - pAddrStart);
         var vAddrEnd = vAddrStart + (pAddrEnd - pAddrStart);
-        return new Mapping(MemoryException.None, device, deviceLib, vAddrStart, vAddrEnd, pAddrStart, dAddr - vAddr);
+        return new Mapping(
+            MemoryException.None,
+            device,
+            deviceLib,
+            vAddrStart,
+            vAddrEnd,
+            pAddrStart,
+            dAddr - vAddr);
       } else {
         return new Mapping(result.exception(), null, null, 0L, 0L, 0L, 0L);
       }
     }
   }
 
-  public record Mapping(MemoryException exception, Object device, DeviceLibrary deviceLib, long vAddrStart, long vAddrEnd, long pAddrStart, long v2dOffset) {
+  @TruffleBoundary
+  public static void printMapping(Rv64Context context, long satp) {
+    var mode = (satp >> Satp.MODE_SHIFT) & Satp.MODE_MASK;
+
+    if (mode == Satp.MODE_BARE) {
+      return;
+    } else if (mode == Satp.MODE_SV39) {
+      MmuSv39.dumpPageTable(context, satp);
+    } else {
+      Utils.printf("Unsupported satp mode\n");
+    }
+  }
+
+  public record Mapping(
+      MemoryException exception,
+      Object device,
+      DeviceLibrary deviceLib,
+      long vAddrStart,
+      long vAddrEnd,
+      long pAddrStart,
+      long v2dOffset) {
     public boolean inRange(long vAddr) {
       return vAddrStart <= vAddr && vAddr < vAddrEnd;
     }
@@ -123,6 +156,14 @@ public class MemoryAccess {
       return switch (this) {
         case AccessFault -> Cause.STORE_ACCESS_FAULT;
         case PageFault -> Cause.STORE_PAGE_FAULT;
+        default -> throw CompilerDirectives.shouldNotReachHere();
+      };
+    }
+
+    public long toExecuteException() {
+      return switch (this) {
+        case AccessFault -> Cause.INST_ACCESS_FAULT;
+        case PageFault -> Cause.INSTRUCTION_PAGE_FAULT;
         default -> throw CompilerDirectives.shouldNotReachHere();
       };
     }

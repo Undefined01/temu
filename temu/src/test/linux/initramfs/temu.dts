@@ -1,0 +1,56 @@
+/dts-v1/;
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	compatible = "freechips,rocketchip-unknown-dev";
+	model = "freechips,rocketchip-unknown";
+	
+	chosen {
+		//bootargs = "console=/dev/hvc0 root=/dev/mmcblk0 rootfstype=ext4 ro rootwait earlycon=sbi"; // for linux 5.0
+		bootargs = "root=/dev/mmcblk0 rootfstype=ext4 ro rootwait earlycon=sbi";
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x02000000>;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		timebase-frequency = <1000000>;
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "riscv";
+			reg = <0>;
+			status = "okay";
+
+			mmu-type = "riscv,sv39";
+			riscv,isa = "rv64ima";
+
+			cpu0_intc: interrupt-controller {
+				compatible = "riscv,cpu-intc";
+				interrupt-controller;
+				#interrupt-cells = <1>;
+			};
+		};
+	};
+
+	soc {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		compatible = "simple-bus";
+		ranges;
+
+		serial@a00003f8 {
+			compatible = "ns16550a";
+			reg = <0x0 0xa00003f8 0x0 0x100>;
+			reg-names = "control";
+		};
+		mmc@a3000000 {
+			compatible = "nemu-sdhost";
+			reg = <0x0 0xa3000000 0x0 0x1000>;
+		};
+	};
+};

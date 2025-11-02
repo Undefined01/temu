@@ -2,7 +2,6 @@ package website.lihan.temu.cpu.csr;
 
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
-
 import website.lihan.temu.Utils;
 
 @ExportLibrary(CsrLibrary.class)
@@ -40,7 +39,9 @@ public class Dummy {
     if (validMask != -1L) {
       var diff = value ^ newValue;
       if ((diff & unimplementedMask) != 0) {
-        Utils.printf("Warning: Attempt to write to unimplemented bits of CSR %s. newValue=0x%016X, unimplementedMask=0x%016X\n", name, newValue, unimplementedMask);
+        Utils.printf(
+            "Warning: Attempt to write to unimplemented bits of CSR %s. newValue=0x%016X, unimplementedMask=0x%016X\n",
+            name, newValue, unimplementedMask);
       }
       if ((diff & ~validMask) != 0) {
         newValue = (newValue & validMask) | (value & ~validMask);

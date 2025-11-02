@@ -17,7 +17,7 @@ public final class Memory {
   private final byte[] memory;
 
   public Memory() {
-    this(0x80000000L, 128 * 1024 * 1024);
+    this(0x80000000L, 0x8000000); // 128 MB
   }
 
   public Memory(long startAddress, int size) {
@@ -49,7 +49,6 @@ public final class Memory {
   @ExportMessage
   @ExplodeLoop
   public int read(long address, byte[] buffer, int length) {
-    length = Math.min(length, memory.length);
     System.arraycopy(memory, (int) address, buffer, 0, length);
     return 0;
   }

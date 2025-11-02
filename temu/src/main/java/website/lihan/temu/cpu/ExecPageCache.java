@@ -7,6 +7,7 @@ import org.graalvm.collections.EconomicMap;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.instr.MemoryAccess;
 import website.lihan.temu.cpu.instr.MemoryAccess.AccessKind;
+import website.lihan.temu.cpu.instr.MemoryAccess.MemoryException;
 import website.lihan.temu.device.Bus;
 
 public class ExecPageCache {
@@ -29,27 +30,31 @@ public class ExecPageCache {
   }
 
   @TruffleBoundary
-  public Rv64BytecodeRootNode getByEntryPoint(Rv64State cpu, long entryPc) {
+  public Rv64BytecodeRootNode getByEntryPoint(Rv64State cpu, long vEntryAddr) {
     var satp = cpu.getCsrFile().satp.getValue();
     long pAddr;
     if (satp != 0) {
-      var result = MemoryAccess.queryAddr(cpu, bus, entryPc, AccessKind.Execute, false);
-      pAddr = result.toPAddr(entryPc);
+      var result = MemoryAccess.queryAddr(cpu, bus, vEntryAddr, AccessKind.Execute, false);
+      if (result.exception() != MemoryException.None) {
+        throw InterruptException.create(vEntryAddr, result.exception().toExecuteException(), vEntryAddr);
+      }
+      pAddr = result.toPAddr(vEntryAddr);
     } else {
-      pAddr = entryPc;
+      pAddr = vEntryAddr;
     }
-    var pageAddr = pAddr & PAGE_ADDR_MASK;
-    var subAddr = (int) (pAddr - pageAddr);
-    var rootNode = rootCache.get(pAddr);
+    var vPageAddr = vEntryAddr & PAGE_ADDR_MASK;
+    var pPageAddr = pAddr & PAGE_ADDR_MASK;
+    var subAddr = (int) (pAddr & ~PAGE_ADDR_MASK);
+    var rootNode = rootCache.get(vEntryAddr);
     if (rootNode == null) {
       CompilerDirectives.transferToInterpreterAndInvalidate();
-      var bc = bcCache.get(pageAddr);
+      var bc = bcCache.get(vPageAddr);
       if (bc == null) {
         bc = new byte[PAGE_SIZE];
-        context.getBus().executeRead(pageAddr, bc, PAGE_SIZE);
-        bcCache.put(pageAddr, bc);
+        context.getBus().executeRead(pPageAddr, bc, PAGE_SIZE);
+        bcCache.put(vPageAddr, bc);
       }
-      var node = new Rv64BytecodeNode(pageAddr, bc, subAddr, cpu);
+      var node = new Rv64BytecodeNode(vPageAddr, bc, subAddr, cpu);
       rootNode = new Rv64BytecodeRootNode(context.getLanguage(), node);
       rootCache.put(pAddr, rootNode);
     }
@@ -62,5 +67,11 @@ public class ExecPageCache {
 
   public void putCachedNodes(long baseAddr, Node[] nodes) {
     nodeCache.put(baseAddr, nodes);
+  }
+
+  public void clear() {
+    rootCache.clear();
+    nodeCache.clear();
+    bcCache.clear();
   }
 }

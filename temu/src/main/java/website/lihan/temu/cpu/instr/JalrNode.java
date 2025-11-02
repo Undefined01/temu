@@ -9,14 +9,14 @@ import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.Rv64State;
 
-public abstract class RvIndirectCallNode extends Node {
+public abstract class JalrNode extends Node {
   public final int rs1;
   public final int imm;
   public final int rd;
   public final long returnPc;
   private final Rv64Context context;
 
-  public RvIndirectCallNode(int rs1, int imm, int rd, long returnPc) {
+  public JalrNode(int rs1, int imm, int rd, long returnPc) {
     this.rs1 = rs1;
     this.imm = imm;
     this.rd = rd;

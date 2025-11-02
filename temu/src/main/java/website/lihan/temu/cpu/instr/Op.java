@@ -1,12 +1,11 @@
 package website.lihan.temu.cpu.instr;
 
+import static website.lihan.temu.cpu.instr.Op.Funct10.*;
+
 import com.oracle.truffle.api.CompilerDirectives;
 import website.lihan.temu.Utils;
-import website.lihan.temu.cpu.IllegalInstructionException;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.RvUtils;
-
-import static website.lihan.temu.cpu.instr.Op.Funct10.*;
 
 public class Op {
   public static void execute(Rv64State cpu, int instr) {
