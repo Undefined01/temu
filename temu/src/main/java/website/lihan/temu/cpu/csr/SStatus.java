@@ -2,12 +2,14 @@ package website.lihan.temu.cpu.csr;
 
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
+import website.lihan.temu.Utils;
 
 @ExportLibrary(CsrLibrary.class)
 public class SStatus {
   private MStatus value;
 
-  public static final long mask = MStatus.SIE_MASK | MStatus.SPIE_MASK | MStatus.SPP_MASK | MStatus.SUM_MASK;
+  public static final long mask =
+      MStatus.SIE_MASK | MStatus.SPIE_MASK | MStatus.SPP_MASK | MStatus.SUM_MASK;
 
   public SStatus(MStatus value) {
     this.value = value;
@@ -22,7 +24,7 @@ public class SStatus {
   public void setValue(long newValue) {
     var diff = value.getValue() ^ newValue;
     if ((diff & ~mask) != 0) {
-      System.err.printf("Warning: writing unimplemented bits of sstatus: %016x\n", diff & ~mask);
+      Utils.printf("Warning: writing unimplemented bits of sstatus: %016x\n", diff & ~mask);
     }
     value.setValue((value.getValue() & ~mask) | (newValue & mask));
   }
@@ -33,7 +35,7 @@ public class SStatus {
   }
 
   // Supervisor Previous Privilege Mode
-  public void setSPP(long spp) {
+  public void setSPP(int spp) {
     value.setSPP(spp);
   }
 

@@ -1,6 +1,6 @@
-package website.lihan.temu.sbi;
+package website.lihan.temu.cpu.sbi;
 
-import static website.lihan.temu.sbi.Sbi.ExtIDs.*;
+import static website.lihan.temu.cpu.sbi.Sbi.ExtIDs.*;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import website.lihan.temu.Utils;

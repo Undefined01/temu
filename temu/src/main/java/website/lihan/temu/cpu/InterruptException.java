@@ -55,4 +55,9 @@ public class InterruptException extends ControlFlowException {
   public static InterruptException create(long pc, long cause, long stval) {
     return new InterruptException(pc, cause, stval);
   }
+
+  @TruffleBoundary
+  public static InterruptException createIllegalInstruction(long pc) {
+    return new InterruptException(pc, Cause.ILLEGAL_INST, pc);
+  }
 }

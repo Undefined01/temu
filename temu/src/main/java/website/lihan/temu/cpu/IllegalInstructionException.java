@@ -17,6 +17,11 @@ public class IllegalInstructionException extends ControlFlowException {
   }
 
   @TruffleBoundary
+  public static IllegalInstructionException create(String format, Object args) {
+    return new IllegalInstructionException(String.format(format, args));
+  }
+
+  @TruffleBoundary
   public static IllegalInstructionException create(long pc, int instr) {
     return new IllegalInstructionException(
         String.format("Illegal instruction 0x%08x at pc=0x%08x", instr, pc));

@@ -9,12 +9,11 @@ import website.lihan.temu.cpu.IllegalInstructionException;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.RvUtils;
 
-public class Amo extends Node {
+public final class Amo extends Node {
   @Child private LoadNode loadNode;
   @Child private StoreNode storeNode;
 
   private final long pc;
-  private final boolean isValid;
   private final int rd;
   private final int rs1;
   private final int rs2;
@@ -34,7 +33,6 @@ public class Amo extends Node {
           case Funct3.D -> 8;
           default -> 0;
         };
-    this.isValid = length != 0;
     this.funct = r.funct7() >> 2;
     this.aq = (r.funct7() & 0b10) != 0;
     this.rl = (r.funct7() & 0b01) != 0;

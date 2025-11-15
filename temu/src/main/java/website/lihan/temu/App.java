@@ -14,7 +14,6 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.io.ByteSequence;
-import website.lihan.temu.cpu.RegNames;
 
 public class App {
   private static final String LANG = "rv64";
@@ -62,16 +61,16 @@ public class App {
     }
 
     try {
-      var scope = context.getBindings(Rv64BytecodeLanguage.ID).as(Rv64Scope.class);
-      var dts = Files.readAllBytes(Path.of("initramfs/temu.dtb"));
-      var dtsAddr = 0x81000000L;
-      scope.bus.executeWrite(dtsAddr, dts, dts.length);
-      scope.context.state.setReg(RegNames.a0, 0);
-      scope.context.state.setReg(RegNames.a1, dtsAddr);
+      // var scope = context.getBindings(Rv64BytecodeLanguage.ID).as(Rv64Scope.class);
+      // var dts = Files.readAllBytes(Path.of("initramfs/temu.dtb"));
+      // var dtsAddr = 0x81000000L;
+      // scope.bus.executeWrite(dtsAddr, dts, dts.length);
+      // scope.context.state.setReg(RegNames.a0, 0);
+      // scope.context.state.setReg(RegNames.a1, dtsAddr);
       context.eval(source);
       return 0;
-    } catch (IOException ex) {
-      throw new RuntimeException(ex);
+      // } catch (IOException ex) {
+      //   throw new RuntimeException(ex);
     } catch (PolyglotException ex) {
       ex.printStackTrace();
       return 1;

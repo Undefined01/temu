@@ -2,8 +2,10 @@ package website.lihan.temu.cpu;
 
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.csr.CsrFile;
+import website.lihan.temu.device.RTC;
 
 public final class Rv64State {
   @CompilationFinal(dimensions = 0)
@@ -66,6 +68,13 @@ public final class Rv64State {
         return csrs.mstatus.getMIE();
       default:
         throw CompilerDirectives.shouldNotReachHere();
+    }
+  }
+
+  @TruffleBoundary
+  public void throwPendingInterrupt(long pc) throws InterruptException {
+    if (this.isInterruptEnabled() && RTC.checkInterrupt()) {
+      throw InterruptException.create(pc, InterruptException.Cause.STIMER);
     }
   }
 }

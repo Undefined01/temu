@@ -8,8 +8,9 @@ import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.IllegalInstructionException;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.RvUtils.SInstruct;
-import website.lihan.temu.cpu.instr.MemoryAccess.AccessKind;
 import website.lihan.temu.device.Bus;
+import website.lihan.temu.mm.AccessKind;
+import website.lihan.temu.mm.Mapping;
 
 @ImportStatic({MemoryAccess.class, AccessKind.class})
 public abstract class StoreNode extends Node {
@@ -21,7 +22,7 @@ public abstract class StoreNode extends Node {
   public final long pc;
 
   protected final Bus bus;
-  protected MemoryAccess.Mapping cache;
+  protected Mapping cache;
 
   public StoreNode(SInstruct s, long pc) {
     length =
@@ -68,7 +69,7 @@ public abstract class StoreNode extends Node {
       Rv64State cpu,
       long vAddr,
       long value,
-      @Cached("queryAddr(cpu, bus, vAddr, Store, true)") MemoryAccess.Mapping cache) {
+      @Cached("queryAddr(cpu, bus, vAddr, Store, true)") Mapping cache) {
     cache.store(pc, vAddr, length, value);
   }
 

@@ -9,36 +9,25 @@ import com.oracle.truffle.api.memory.ByteArraySupport;
 import com.oracle.truffle.api.nodes.BytecodeOSRNode;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
-import java.util.ArrayList;
 import website.lihan.temu.Rv64Context;
-import website.lihan.temu.Utils;
-import website.lihan.temu.cpu.Opcodes.SystemFunct3;
-import website.lihan.temu.cpu.RvUtils.BInstruct;
 import website.lihan.temu.cpu.RvUtils.IInstruct;
-import website.lihan.temu.cpu.RvUtils.JInstruct;
-import website.lihan.temu.cpu.RvUtils.SInstruct;
 import website.lihan.temu.cpu.RvUtils.UInstruct;
 import website.lihan.temu.cpu.instr.Amo;
 import website.lihan.temu.cpu.instr.BranchNode;
-import website.lihan.temu.cpu.instr.CallNode;
-import website.lihan.temu.cpu.instr.CsrRWNode;
 import website.lihan.temu.cpu.instr.JalNode;
 import website.lihan.temu.cpu.instr.JalrNodeGen;
 import website.lihan.temu.cpu.instr.LoadNode;
-import website.lihan.temu.cpu.instr.LoadNodeGen;
 import website.lihan.temu.cpu.instr.Op;
 import website.lihan.temu.cpu.instr.Op32;
 import website.lihan.temu.cpu.instr.OpImm;
 import website.lihan.temu.cpu.instr.OpImm32;
 import website.lihan.temu.cpu.instr.StoreNode;
-import website.lihan.temu.cpu.instr.StoreNodeGen;
 import website.lihan.temu.cpu.instr.SystemOp;
 import website.lihan.temu.device.Bus;
-import website.lihan.temu.device.RTC;
 
 public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
-  @CompilationFinal long baseAddr;
-  @CompilationFinal int entryBci;
+  final long baseAddr;
+  final int entryBci;
 
   final Rv64Context context;
   final Bus bus;
@@ -55,30 +44,19 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
 
   private static final ByteArraySupport BYTES = ByteArraySupport.littleEndian();
 
-  public Rv64BytecodeNode(long baseAddr, byte[] bc, int entryBci, Rv64State cpu) {
+  public Rv64BytecodeNode(long baseAddr, byte[] bc, Node[] nodes, int entryBci, Rv64State cpu) {
     assert baseAddr <= entryBci && entryBci < baseAddr + bc.length;
     this.baseAddr = baseAddr;
     this.bc = bc;
+    this.nodes = nodes;
     this.entryBci = entryBci;
     this.cpu = cpu;
 
     this.context = Rv64Context.get(this);
     this.bus = context.getBus();
-    this.nodes = null;
   }
 
   public Object execute(VirtualFrame frame) {
-    if (nodes == null) {
-      CompilerDirectives.transferToInterpreterAndInvalidate();
-      var context = Rv64Context.get(this);
-      var execCache = context.getExecPageCache();
-      var cachedNodes = execCache.getCachedNodes(baseAddr);
-      if (cachedNodes == null) {
-        cachedNodes = createCachedNodes();
-        execCache.putCachedNodes(baseAddr, cachedNodes);
-      }
-      this.nodes = cachedNodes;
-    }
     return executeFromBci(frame, this.entryBci);
   }
 
@@ -103,16 +81,13 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     int bci = startBci;
     while (true) {
       CompilerAsserts.partialEvaluationConstant(bci);
-      assert bci + 4 <= bc.length;
+      if (bci + 4 > bc.length) {
+        // reached the end of the bytecode page
+        throw JumpException.create(getPc(bci));
+      }
       int instr = BYTES.getInt(bc, bci);
       CompilerAsserts.partialEvaluationConstant(instr);
 
-      // if (getPc(bci) == 0xffffffff8028e788L) {
-      //   Utils.printf("memmove %08x <- %08x, len=%d\n", cpu.getReg(10), cpu.getReg(11), cpu.getReg(12));
-      // }
-      // if (getPc(bci) == 0xffffffff8028ecc4L) {
-      //   Utils.printf("clear_user %08x, len=%d\n", cpu.getReg(10), cpu.getReg(11));
-      // }
       // website.lihan.temu.Utils.printf("pc=%08x: %08x, sp=%08x, ra=%08x\n", baseAddr + bci, instr,
       // cpu.getReg(2), cpu.getReg(1));
       int nextBci = bci + 4;
@@ -132,45 +107,41 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           cpu.setReg(u.rd(), getPc(bci) + u.imm());
         }
         case Opcodes.JAL -> {
-          final var isCall = (instr & 0x80) != 0;
-          final var nodeIdx = (instr >> 8);
-          if (isCall) {
+          final var node = JalNode.class.cast(nodes[instr >> 8]);
+          if (node.isCall) {
             // This is likely a function call from the ABI convention.
             // If the following ret instruction (jalr zero, 0(ra)) is jumping back to
             // the caller (ra == current_pc + 4), we can optimize out the JumpException
             // and simply return to the caller directly.
-            var node = CallNode.class.cast(nodes[nodeIdx]);
-            Utils.printf("Calling from %08x to %08x\n", getPc(bci), node.targetPc);
+            // Utils.printf("Calling from %08x to %08x\n", getPc(bci), node.targetPc);
             node.call(cpu);
           } else {
-            final var jalNode = JalNode.class.cast(nodes[nodeIdx]);
-            final var targetPc = jalNode.targetPc;
+            final var targetPc = node.targetPc;
             if (targetPc < baseAddr || targetPc >= baseAddr + bc.length) {
               throw JumpException.create(targetPc);
             }
             // ExplodeLoop phrase during partial evaluation happens before inlining function calls.
             // To ensure nextBci is a constant, we cannot encapsulation the jump logic into a
             // method.
-            nextBci = (int) (jalNode.targetPc - baseAddr);
-            cpu.setReg(jalNode.rd, jalNode.returnPc);
+            nextBci = (int) (node.targetPc - baseAddr);
+            cpu.setReg(node.rd, node.returnPc);
           }
         }
         case Opcodes.JALR -> {
-          final var nodeIdx = (instr >> 8);
-          final var node = JalrNodeGen.class.cast(nodes[nodeIdx]);
+          final var node = JalrNodeGen.class.cast(nodes[instr >> 8]);
           // An optimization in the JalNode above takes an assumption that most jalr instructions
           // are function returns (jalr zero, 0(ra)).
           // And if target address equals to the return address of previous `jal ra, xx`, we can
           // optimize out the JumpException throwing and just return to the caller directly.
           final var nextPc = cpu.getReg(node.rs1) + node.imm;
           if (node.rd == 1) {
-            Utils.printf("Indirect call from %08x to %08x\n", getPc(bci), nextPc);
+            // Utils.printf("Indirect call from %08x to %08x\n", getPc(bci), nextPc);
             node.execute(cpu);
-          } else if (node.rd == 0 && CallNode.jalrIsReturn(frame, nextPc)) {
-            Utils.printf("Returning from %08x to %08x\n", getPc(bci), nextPc);
+          } else if (node.rd == 0 && JalNode.jalrIsReturn(frame, nextPc)) {
+            // Utils.printf("Returning from %08x to %08x\n", getPc(bci), nextPc);
             return 0;
           } else {
-            Utils.printf("Indirect jump from %08x to %08x\n", getPc(bci), nextPc);
+            // Utils.printf("Indirect jump from %08x to %08x\n", getPc(bci), nextPc);
             cpu.setReg(node.rd, node.returnPc);
             // nextBci must be a constant during explode looping. But the targetPc of jalr
             // instruction
@@ -180,10 +151,10 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           }
         }
         case Opcodes.BRANCH -> {
-          final var branchNode = BranchNode.class.cast(nodes[(instr >> 8)]);
+          final var branchNode = BranchNode.class.cast(nodes[instr >> 8]);
           final var cond =
               branchNode.condition(cpu.getReg(branchNode.rs1), cpu.getReg(branchNode.rs2));
-          if (branchNode.profileBranch(cond)) {
+          if (cond) {
             final var targetPc = branchNode.targetPc;
             if (targetPc < baseAddr || targetPc >= baseAddr + bc.length) {
               throw JumpException.create(targetPc);
@@ -211,16 +182,14 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           }
         }
         case Opcodes.AMO -> {
-          var node = Amo.class.cast(nodes[(instr >> 8)]);
+          var node = Amo.class.cast(nodes[instr >> 8]);
           node.execute(cpu);
         }
         default -> throw IllegalInstructionException.create(getPc(bci), instr);
       }
 
       if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge
-        if (cpu.isInterruptEnabled() && RTC.checkInterrupt()) {
-          throw InterruptException.create(getPc(bci), InterruptException.Cause.STIMER);
-        }
+        // cpu.throwPendingInterrupt(getPc(bci));
         if (BytecodeOSRNode.pollOSRBackEdge(this, 1)) { // OSR can be tried
           Object result = BytecodeOSRNode.tryOSR(this, nextBci, cpu, null, frame);
           if (result != null) { // OSR was performed
@@ -229,10 +198,6 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
         }
       }
 
-      if (nextBci >= bc.length) {
-        // reached the end of the bytecode page
-        throw JumpException.create(getPc(nextBci));
-      }
       bci = nextBci;
     }
   }
@@ -241,88 +206,8 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     return baseAddr + (long) bci;
   }
 
-  public Node[] createCachedNodes() {
-    var nodeList = new ArrayList<Node>();
-    for (int bci = 0; bci + 4 <= bc.length; bci += 4) {
-      final var pc = baseAddr + bci;
-      var instr = BYTES.getInt(bc, bci);
-      final var opcode = instr & 0x7f;
-      switch (opcode) {
-        case Opcodes.JAL -> {
-          final var j = JInstruct.decode(instr);
-          final var targetPc = pc + j.imm();
-          final var returnPc = pc + 4;
-          final var isCall = j.rd() == 1;
-          final var nodeIdx = nodeList.size();
-          if (isCall) {
-            // likely a function call
-            nodeList.add(new CallNode(targetPc, returnPc));
-          } else {
-            nodeList.add(new JalNode(targetPc, returnPc, j.rd()));
-          }
-          instr = Opcodes.JAL | (isCall ? 0x80 : 0) | (nodeIdx << 8);
-          BYTES.putInt(bc, bci, instr);
-        }
-        case Opcodes.JALR -> {
-          final var i = IInstruct.decode(instr);
-          final var returnPc = pc + 4;
-          final var nodeIdx = nodeList.size();
-          nodeList.add(JalrNodeGen.create(i.rs1(), i.imm(), i.rd(), returnPc));
-          instr = Opcodes.JALR | (nodeIdx << 8);
-          BYTES.putInt(bc, bci, instr);
-        }
-        case Opcodes.BRANCH -> {
-          final var b = BInstruct.decode(instr);
-          final var targetPc = pc + b.imm();
-          final var nodeIdx = nodeList.size();
-          nodeList.add(new BranchNode(b.funct3(), b.rs1(), b.rs2(), targetPc));
-          instr = Opcodes.BRANCH | (nodeIdx << 8);
-          BYTES.putInt(bc, bci, instr);
-        }
-        case Opcodes.LOAD -> {
-          final var i = IInstruct.decode(instr);
-          final var nodeIdx = nodeList.size();
-          nodeList.add(LoadNodeGen.create(i, pc));
-          instr = Opcodes.LOAD | (nodeIdx << 8);
-          BYTES.putInt(bc, bci, instr);
-        }
-        case Opcodes.STORE -> {
-          final var s = SInstruct.decode(instr);
-          var nodeIdx = nodeList.size();
-          nodeList.add(StoreNodeGen.create(s, pc));
-          instr = Opcodes.STORE | (nodeIdx << 8);
-          BYTES.putInt(bc, bci, instr);
-        }
-        case Opcodes.AMO -> {
-          final var nodeIdx = nodeList.size();
-          nodeList.add(new Amo(pc, instr));
-          instr = Opcodes.AMO | (nodeIdx << 8);
-          BYTES.putInt(bc, bci, instr);
-        }
-        case Opcodes.SYSTEM -> {
-          final var i = IInstruct.decode(instr);
-          switch (i.funct3()) {
-            case SystemFunct3.CSRRW,
-                SystemFunct3.CSRRS,
-                SystemFunct3.CSRRC,
-                SystemFunct3.CSRRWI,
-                SystemFunct3.CSRRSI,
-                SystemFunct3.CSRRCI -> {
-              final var nodeIdx = nodeList.size();
-              nodeList.add(new CsrRWNode(i, pc));
-              instr = Opcodes.SYSTEM | (0x80) | (nodeIdx << 8);
-              BYTES.putInt(bc, bci, instr);
-            }
-          }
-        }
-      }
-    }
-    var nodes = nodeList.toArray(new Node[0]);
-    return nodes;
-  }
-
   private void doLoad(Rv64State cpu, int bci, int instr) {
-    var loadNode = LoadNode.class.cast(nodes[(instr >> 8)]);
+    var loadNode = LoadNode.class.cast(nodes[instr >> 8]);
     loadNode.throwIfInvalid();
     var addr = cpu.getReg(loadNode.rs1) + loadNode.offset;
     var value = loadNode.execute(cpu, addr);
@@ -330,7 +215,7 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
   }
 
   private void doStore(Rv64State cpu, int bci, int instr) {
-    var storeNode = StoreNode.class.cast(nodes[(instr >> 8)]);
+    var storeNode = StoreNode.class.cast(nodes[instr >> 8]);
     storeNode.throwIfInvalid();
     var addr = cpu.getReg(storeNode.rs1) + storeNode.offset;
     storeNode.execute(cpu, addr, cpu.getReg(storeNode.rs2));

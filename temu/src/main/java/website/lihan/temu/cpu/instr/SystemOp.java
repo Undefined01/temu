@@ -8,17 +8,16 @@ import website.lihan.temu.cpu.HaltException;
 import website.lihan.temu.cpu.IllegalInstructionException;
 import website.lihan.temu.cpu.InterruptException;
 import website.lihan.temu.cpu.JumpException;
-import website.lihan.temu.cpu.PrivilegeLevel;
 import website.lihan.temu.cpu.Opcodes.SystemFunct12;
 import website.lihan.temu.cpu.Opcodes.SystemFunct3;
 import website.lihan.temu.cpu.Opcodes.SystemFunct7;
+import website.lihan.temu.cpu.PrivilegeLevel;
 import website.lihan.temu.cpu.Rv64State;
-import website.lihan.temu.cpu.InterruptException.Cause;
 import website.lihan.temu.cpu.RvUtils.IInstruct;
 import website.lihan.temu.cpu.csr.CsrId;
 import website.lihan.temu.cpu.csr.MStatus;
 import website.lihan.temu.cpu.csr.SStatus;
-import website.lihan.temu.sbi.Sbi;
+import website.lihan.temu.cpu.sbi.Sbi;
 
 public class SystemOp {
   public static void execute(Rv64Context context, Rv64State cpu, long pc, int instr, Node[] nodes) {
@@ -42,7 +41,7 @@ public class SystemOp {
         cpu.setReg(csrNode.rd, oldCSRValue);
         csrNode.write(oldRegValue);
         if (csrNode.csrId == CsrId.SATP) {
-          MemoryAccess.printMapping(context, oldRegValue);
+          MemoryAccess.dumpPageTable(context, oldRegValue);
         }
       }
       case SystemFunct3.CSRRS -> {
@@ -88,7 +87,7 @@ public class SystemOp {
     switch (i.funct7()) {
       case SystemFunct7.SFENCE_VMA -> {
         context.execPageCache.clear();
-        MemoryAccess.printMapping(context, cpu.getCsrFile().satp.getValue());
+        MemoryAccess.dumpPageTable(context, cpu.getCsrFile().satp.getValue());
         throw JumpException.create(pc + 4);
       }
     }
@@ -100,8 +99,7 @@ public class SystemOp {
             Sbi.handle(cpu);
             // throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_S_MODE);
           }
-          case M -> throw InterruptException.create(pc,
-        InterruptException.Cause.ECALL_FROM_M_MODE);
+          case M -> throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_M_MODE);
           default -> throw CompilerDirectives.shouldNotReachHere();
         }
       }
@@ -176,6 +174,7 @@ public class SystemOp {
           yield PrivilegeLevel.M;
         }
       }
+      default -> throw CompilerDirectives.shouldNotReachHere();
     };
   }
 }

@@ -32,6 +32,8 @@ dependencies {
     // implementation(libs.graalvm.polyglot)
     // implementation(libs.graalvm.profiler)
     annotationProcessor(libs.truffle.dsl.processor)
+    implementation(project(":temu-processor"))
+    annotationProcessor(project(":temu-processor"))
 
     testAnnotationProcessor(libs.truffle.dsl.processor)
 

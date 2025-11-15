@@ -1,18 +1,15 @@
 package website.lihan.temu.cpu.instr;
 
-import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.Utils;
-import website.lihan.temu.cpu.InterruptException;
-import website.lihan.temu.cpu.InterruptException.Cause;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.csr.Satp;
-import website.lihan.temu.cpu.instr.MemoryAccess.AccessKind;
-import website.lihan.temu.cpu.instr.MemoryAccess.Mapping;
-import website.lihan.temu.cpu.instr.MemoryAccess.MemoryException;
 import website.lihan.temu.device.Bus;
 import website.lihan.temu.device.DeviceLibrary;
+import website.lihan.temu.mm.AccessKind;
+import website.lihan.temu.mm.Mapping;
+import website.lihan.temu.mm.MemoryException;
 
 public class MemoryAccess {
   public static Mapping queryAddr(
@@ -64,7 +61,7 @@ public class MemoryAccess {
   }
 
   @TruffleBoundary
-  public static void printMapping(Rv64Context context, long satp) {
+  public static void dumpPageTable(Rv64Context context, long satp) {
     var mode = (satp >> Satp.MODE_SHIFT) & Satp.MODE_MASK;
 
     if (mode == Satp.MODE_BARE) {
@@ -73,99 +70,6 @@ public class MemoryAccess {
       MmuSv39.dumpPageTable(context, satp);
     } else {
       Utils.printf("Unsupported satp mode\n");
-    }
-  }
-
-  public record Mapping(
-      MemoryException exception,
-      Object device,
-      DeviceLibrary deviceLib,
-      long vAddrStart,
-      long vAddrEnd,
-      long pAddrStart,
-      long v2dOffset) {
-    public boolean inRange(long vAddr) {
-      return vAddrStart <= vAddr && vAddr < vAddrEnd;
-    }
-
-    public long toPAddr(long vAddr) {
-      return vAddr - vAddrStart + pAddrStart;
-    }
-
-    public long load(long pc, long vAddr, int length, boolean signedExtend) {
-      if (exception != MemoryException.None) {
-        throw InterruptException.create(pc, exception.toLoadException(), vAddr);
-      }
-
-      var dAddr = vAddr + v2dOffset;
-      if (signedExtend) {
-        return switch (length) {
-          case 1 -> deviceLib.read1(device, dAddr);
-          case 2 -> deviceLib.read2(device, dAddr);
-          case 4 -> deviceLib.read4(device, dAddr);
-          case 8 -> deviceLib.read8(device, dAddr);
-          default -> 0;
-        };
-      } else {
-        return switch (length) {
-          case 1 -> (long) deviceLib.read1(device, dAddr) & 0xFFL;
-          case 2 -> (long) deviceLib.read2(device, dAddr) & 0xFFFFL;
-          case 4 -> (long) deviceLib.read4(device, dAddr) & 0xFFFFFFFFL;
-          case 8 -> deviceLib.read8(device, dAddr);
-          default -> 0;
-        };
-      }
-    }
-
-    public void store(long pc, long vAddr, int length, long value) {
-      if (exception != MemoryException.None) {
-        throw InterruptException.create(pc, exception.toStoreException(), vAddr);
-      }
-
-      var dAddr = vAddr + v2dOffset;
-      switch (length) {
-        case 1 -> deviceLib.write1(device, dAddr, (byte) value);
-        case 2 -> deviceLib.write2(device, dAddr, (short) value);
-        case 4 -> deviceLib.write4(device, dAddr, (int) value);
-        case 8 -> deviceLib.write8(device, dAddr, value);
-      }
-    }
-  }
-
-  public enum AccessKind {
-    Load,
-    Store,
-    Execute,
-  }
-
-  public enum MemoryException {
-    None,
-    AccessFault,
-    PageFault,
-    ;
-
-    public long toLoadException() {
-      return switch (this) {
-        case AccessFault -> Cause.LOAD_ACCESS_FAULT;
-        case PageFault -> Cause.LOAD_PAGE_FAULT;
-        default -> throw CompilerDirectives.shouldNotReachHere();
-      };
-    }
-
-    public long toStoreException() {
-      return switch (this) {
-        case AccessFault -> Cause.STORE_ACCESS_FAULT;
-        case PageFault -> Cause.STORE_PAGE_FAULT;
-        default -> throw CompilerDirectives.shouldNotReachHere();
-      };
-    }
-
-    public long toExecuteException() {
-      return switch (this) {
-        case AccessFault -> Cause.INST_ACCESS_FAULT;
-        case PageFault -> Cause.INSTRUCTION_PAGE_FAULT;
-        default -> throw CompilerDirectives.shouldNotReachHere();
-      };
     }
   }
 }

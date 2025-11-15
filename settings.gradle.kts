@@ -11,4 +11,6 @@ plugins {
 }
 
 rootProject.name = "temu"
+include("temu-processor")
 include("temu")
+

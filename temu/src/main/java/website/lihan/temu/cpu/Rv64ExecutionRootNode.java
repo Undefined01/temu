@@ -8,7 +8,6 @@ import website.lihan.temu.Rv64BytecodeLanguage;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.instr.SystemOp;
-import website.lihan.temu.device.RTC;
 
 public class Rv64ExecutionRootNode extends RootNode {
   Rv64BytecodeLanguage language;
@@ -26,13 +25,12 @@ public class Rv64ExecutionRootNode extends RootNode {
   @Override
   public Object execute(VirtualFrame frame) {
     var cpu = this.context.getState();
+    var pageCache = this.context.getExecPageCache();
     long pc = 0x80000000L;
     while (true) {
       try {
-        if (cpu.isInterruptEnabled() && RTC.checkInterrupt()) {
-          throw InterruptException.create(pc, InterruptException.Cause.STIMER);
-        }
-        var rootNode = context.getExecPageCache().getByEntryPoint(cpu, pc);
+        cpu.throwPendingInterrupt(pc);
+        var rootNode = pageCache.getByEntryPoint(cpu, pc);
         callNode.call(rootNode.getCallTarget(), 0);
       } catch (JumpException e) {
         // Utils.printf("JumpException to 0x%08x\n", e.getTargetPc());
@@ -43,6 +41,10 @@ public class Rv64ExecutionRootNode extends RootNode {
       } catch (HaltException e) {
         Utils.printf("%s\n", e);
         return 0;
+      } catch (IllegalInstructionException t) {
+        Utils.printf("Unexpected exception: %s\n", t);
+        Utils.printStackTrace(t);
+        return -1;
       } catch (Throwable t) {
         Utils.printf("Unexpected exception: %s\n", t);
         Utils.printStackTrace(t);

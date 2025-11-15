@@ -1,7 +1,6 @@
 package website.lihan.temu.cpu.instr;
 
 import com.oracle.truffle.api.CompilerDirectives;
-import website.lihan.temu.cpu.IllegalInstructionException;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.RvUtils;
 
@@ -24,7 +23,7 @@ public class OpImm {
               switch (i.funct7() >> 1) {
                 case 0b000000 -> op1 >>> shamt;
                 case 0b010000 -> op1 >> shamt;
-                default -> throw IllegalInstructionException.create("Invalid funct7 %d", funct7);
+                default -> throw CompilerDirectives.shouldNotReachHere();
               };
           case 0b110 -> op1 | op2;
           case 0b111 -> op1 & op2;

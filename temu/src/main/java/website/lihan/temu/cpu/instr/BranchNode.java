@@ -6,7 +6,7 @@ import com.oracle.truffle.api.HostCompilerDirectives;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.cpu.IllegalInstructionException;
 
-public class BranchNode extends Node {
+public final class BranchNode extends Node {
   public final int funct3;
   public final int rs1;
   public final int rs2;
@@ -22,7 +22,7 @@ public class BranchNode extends Node {
     this.targetPc = targetPc;
   }
 
-  public boolean condition(long op1, long op2) {
+  public boolean condition(final long op1, final long op2) {
     return switch (funct3) {
       case 0b000 -> op1 == op2;
       case 0b001 -> op1 != op2;

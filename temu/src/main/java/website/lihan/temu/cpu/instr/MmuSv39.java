@@ -8,9 +8,9 @@ import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.RvUtils;
 import website.lihan.temu.cpu.csr.Satp;
-import website.lihan.temu.cpu.instr.MemoryAccess.AccessKind;
-import website.lihan.temu.cpu.instr.MemoryAccess.MemoryException;
 import website.lihan.temu.device.Bus;
+import website.lihan.temu.mm.AccessKind;
+import website.lihan.temu.mm.MemoryException;
 
 public final class MmuSv39 extends Node {
   private static final int PAGE_BITS = 12;

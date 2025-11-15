@@ -23,7 +23,7 @@ public class Rv64BytecodeRootNode extends RootNode {
   public Map<String, Object> getDebugProperties() {
     Map<String, Object> properties = new HashMap<>();
     properties.put(
-        "baseAddr",
+        "vaddr",
         String.format(
             "[0x%08x, 0x%08x)",
             bytecodeNode.baseAddr, bytecodeNode.baseAddr + bytecodeNode.bc.length));
