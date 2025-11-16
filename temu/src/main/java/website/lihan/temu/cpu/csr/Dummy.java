@@ -5,7 +5,7 @@ import com.oracle.truffle.api.library.ExportMessage;
 import website.lihan.temu.Utils;
 
 @ExportLibrary(CsrLibrary.class)
-public class Dummy {
+public final class Dummy {
   private long value;
   private final String name;
   private final long validMask;

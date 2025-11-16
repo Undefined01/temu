@@ -7,7 +7,7 @@ import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.RvUtils;
 
-public class Op {
+public final class Op {
   public static void execute(Rv64State cpu, int instr) {
     final var r = RvUtils.RInstruct.decode(instr);
     final var op1 = cpu.getReg(r.rs1());
@@ -88,5 +88,7 @@ public class Op {
     public static final int DIVU = 0b0000001_101;
     public static final int REM = 0b0000001_110;
     public static final int REMU = 0b0000001_111;
+
+    private Funct10() {}
   }
 }

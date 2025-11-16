@@ -3,30 +3,32 @@ package website.lihan.temu.cpu;
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
-import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.csr.CsrFile;
 import website.lihan.temu.device.RTC;
 
 public final class Rv64State {
   @CompilationFinal(dimensions = 0)
-  private final long[] regs = new long[32];
+  private long[] regs = new long[32];
 
-  private final CsrFile csrs = new CsrFile();
+  @CompilationFinal(dimensions = 0)
+  private CsrFile csrs = new CsrFile();
 
-  @CompilationFinal private Rv64Context context;
+  @CompilationFinal private PrivilegeLevel privilegeLevel;
 
-  // public long pc = 0x80000000L;
-  private PrivilegeLevel privilegeLevel = PrivilegeLevel.S;
-
-  public void setContext(Rv64Context context) {
-    if (this.context != null) {
-      throw CompilerDirectives.shouldNotReachHere("Context can only be set once");
-    }
-    this.context = context;
+  public Rv64State() {
+    this(PrivilegeLevel.M);
   }
 
-  public Rv64Context getContext() {
-    return context;
+  public Rv64State(PrivilegeLevel privilegeLevel) {
+    this.privilegeLevel = privilegeLevel;
+  }
+
+  @TruffleBoundary
+  public Rv64State clone(PrivilegeLevel privilegeLevel) {
+    var cloned = new Rv64State(privilegeLevel);
+    cloned.regs = this.regs;
+    cloned.csrs = this.csrs;
+    return cloned;
   }
 
   public long getReg(int reg) {
@@ -71,7 +73,6 @@ public final class Rv64State {
     }
   }
 
-  @TruffleBoundary
   public void throwPendingInterrupt(long pc) throws InterruptException {
     if (this.isInterruptEnabled() && RTC.checkInterrupt()) {
       throw InterruptException.create(pc, InterruptException.Cause.STIMER);

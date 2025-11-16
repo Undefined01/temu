@@ -47,7 +47,7 @@ public final class Amo extends Node {
     switch (funct) {
       case LR -> {
         if (rs2 != 0) {
-          throw IllegalInstructionException.create(pc, 0);
+          throw IllegalInstructionException.create(pc, "Unsupported");
         }
         var res = loadNode.execute(cpu, addr);
         cpu.setReg(rd, res);

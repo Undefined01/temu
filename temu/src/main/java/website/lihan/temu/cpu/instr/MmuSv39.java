@@ -33,12 +33,12 @@ public final class MmuSv39 extends Node {
 
   @ExplodeLoop
   public static TranslationResult getPhysicalAddressSpace(
-      Bus bus, long satp, long vaddr, AccessKind kind) {
+      Bus bus, Satp satp, long vaddr, AccessKind kind) {
     if (((vaddr << (64 - 39)) >> (64 - 39)) != vaddr) {
       return TranslationResult.invalid(MemoryException.AccessFault);
     }
 
-    var ppn = (satp & PPN_MASK) << PAGE_BITS;
+    var ppn = satp.getPPN() << PAGE_BITS;
 
     var data = new byte[8];
     int level = 0;
@@ -76,7 +76,7 @@ public final class MmuSv39 extends Node {
       return TranslationResult.invalid(MemoryException.PageFault);
     }
     var baseAddr = (ppn & ~mask) | (vaddr & mask & ~PAGE_MASK);
-    return new TranslationResult(MemoryException.None, baseAddr, mask, pte);
+    return new TranslationResult(MemoryException.None, baseAddr, mask);
   }
 
   private static long getVpn(long vAddr, long level) {
@@ -84,8 +84,8 @@ public final class MmuSv39 extends Node {
   }
 
   @TruffleBoundary
-  public static void dumpPageTable(Rv64Context context, long satp) {
-    var ppn = (satp & Satp.PPN_MASK) << PAGE_BITS;
+  public static void dumpPageTable(Rv64Context context, Satp satp) {
+    var ppn = satp.getPPN() << PAGE_BITS;
     System.err.printf("Sv39 Page Table, satp=%016x, ppn=%08x:\n", satp, ppn);
     MmuSv39.dumpPageTable(context, ppn, 0, 2, "");
   }
@@ -137,10 +137,9 @@ public final class MmuSv39 extends Node {
     }
   }
 
-  public record TranslationResult(
-      MemoryException exception, long pAddrStart, long addrMask, long pte) {
+  public record TranslationResult(MemoryException exception, long pAddrStart, long addrMask) {
     public static TranslationResult invalid(MemoryException exception) {
-      return new TranslationResult(exception, 0L, 0L, 0L);
+      return new TranslationResult(exception, 0L, 0L);
     }
 
     public long translate(long vaddr) {

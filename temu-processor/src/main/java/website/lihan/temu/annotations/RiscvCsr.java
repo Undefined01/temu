@@ -9,8 +9,5 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.CLASS)
 @Target(ElementType.TYPE)
 public @interface RiscvCsr {
-  /** The address of the CSR. */
-  int address();
-
   long resetValue() default 0;
 }

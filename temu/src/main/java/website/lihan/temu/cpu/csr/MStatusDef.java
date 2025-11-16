@@ -3,8 +3,9 @@ package website.lihan.temu.cpu.csr;
 import website.lihan.temu.annotations.BitField;
 import website.lihan.temu.annotations.RiscvCsr;
 import website.lihan.temu.annotations.Warl;
+import website.lihan.temu.annotations.Wpri;
 
-@RiscvCsr(address = 0x300)
+@RiscvCsr
 public abstract class MStatusDef {
   @BitField(offset = 0, length = 1)
   private boolean sie;
@@ -23,8 +24,16 @@ public abstract class MStatusDef {
 
   @BitField(offset = 11, length = 2, resetValue = 3)
   @Warl(values = {0, 1, 3})
-  private int mpp = 3;
+  private int mpp;
 
   @BitField(offset = 18, length = 1)
   private boolean sum;
+
+  @BitField(offset = 32, length = 2, resetValue = 2)
+  @Wpri
+  private int uxl;
+
+  @BitField(offset = 34, length = 2, resetValue = 2)
+  @Wpri
+  private int sxl;
 }

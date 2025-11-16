@@ -94,9 +94,9 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
 
       int opcode = instr & 0x7f;
       switch (opcode) {
-        case Opcodes.OP_IMM -> OpImm.execute(cpu, instr);
+        case Opcodes.OP_IMM -> OpImm.execute(cpu, getPc(bci), instr);
         case Opcodes.OP -> Op.execute(cpu, instr);
-        case Opcodes.OP_IMM_32 -> OpImm32.execute(cpu, instr);
+        case Opcodes.OP_IMM_32 -> OpImm32.execute(cpu, getPc(bci), instr);
         case Opcodes.OP_32 -> Op32.execute(cpu, instr);
         case Opcodes.LUI -> {
           final var u = UInstruct.decode(instr);
@@ -178,14 +178,17 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
               context.execPageCache.clear();
               throw JumpException.create(getPc(bci) + 4);
             }
-            default -> throw IllegalInstructionException.create(getPc(bci), instr);
+            default ->
+                throw IllegalInstructionException.create(
+                    getPc(bci), "Unknown funct3 %d of MEM_MISC", i.funct3());
           }
         }
         case Opcodes.AMO -> {
           var node = Amo.class.cast(nodes[instr >> 8]);
           node.execute(cpu);
         }
-        default -> throw IllegalInstructionException.create(getPc(bci), instr);
+        default ->
+            throw IllegalInstructionException.create(getPc(bci), "Unknown opcode %x", opcode);
       }
 
       if (CompilerDirectives.inInterpreter() && nextBci < bci) { // back-edge

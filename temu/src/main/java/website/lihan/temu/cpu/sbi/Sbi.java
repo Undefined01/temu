@@ -4,20 +4,20 @@ import static website.lihan.temu.cpu.sbi.Sbi.ExtIDs.*;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import website.lihan.temu.Utils;
-import website.lihan.temu.cpu.RegNames;
+import website.lihan.temu.cpu.RegId;
 import website.lihan.temu.cpu.Rv64State;
 
-public class Sbi {
+public final class Sbi {
   @TruffleBoundary
   public static void handle(Rv64State cpu) {
-    var ext = cpu.getReg(RegNames.a7);
-    var fid = cpu.getReg(RegNames.a6);
+    var ext = cpu.getReg(RegId.a7);
+    var fid = cpu.getReg(RegId.a6);
     long error = 0;
     long value = 0;
 
     switch ((int) ext) {
       case CONSOLE_PUTCHAR -> {
-        var ch = (byte) cpu.getReg(RegNames.a0);
+        var ch = (byte) cpu.getReg(RegId.a0);
         System.out.print((char) ch);
       }
       default -> {
@@ -26,8 +26,8 @@ public class Sbi {
       }
     }
 
-    cpu.setReg(RegNames.a0, error);
-    cpu.setReg(RegNames.a1, value);
+    cpu.setReg(RegId.a0, error);
+    cpu.setReg(RegId.a1, value);
   }
 
   public static class ExtIDs {

@@ -76,6 +76,14 @@ public abstract class DeviceLibrary extends Library {
     return FACTORY.getUncached();
   }
 
+  public static DeviceLibrary create(Object device, boolean cached) {
+    if (cached) {
+      return getFactory().create(device);
+    } else {
+      return getFactory().getUncached();
+    }
+  }
+
   private static final LibraryFactory<DeviceLibrary> FACTORY =
       LibraryFactory.resolve(DeviceLibrary.class);
 }

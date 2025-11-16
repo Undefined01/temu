@@ -1,35 +1,19 @@
 package website.lihan.temu.cpu;
 
-import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.nodes.ControlFlowException;
 
-public class IllegalInstructionException extends ControlFlowException {
-  private final String message;
+public class IllegalInstructionException {
+  /// Halt execution when an illegal instruction is encountered instead of trapping.
+  /// This is useful for debugging emulator.
+  public static final boolean DEBUG_ILLEGAL_INSTRUCTION = true;
 
-  private IllegalInstructionException(String message) {
-    super();
-    this.message = message;
-  }
+  private IllegalInstructionException() {}
 
-  @TruffleBoundary
-  public static IllegalInstructionException create(String format, Object... args) {
-    return new IllegalInstructionException(String.format(format, args));
-  }
-
-  @TruffleBoundary
-  public static IllegalInstructionException create(String format, Object args) {
-    return new IllegalInstructionException(String.format(format, args));
-  }
-
-  @TruffleBoundary
-  public static IllegalInstructionException create(long pc, int instr) {
-    return new IllegalInstructionException(
-        String.format("Illegal instruction 0x%08x at pc=0x%08x", instr, pc));
-  }
-
-  @Override
-  @TruffleBoundary
-  public String getMessage() {
-    return message;
+  public static ControlFlowException create(long pc, String format, Object... args) {
+    if (DEBUG_ILLEGAL_INSTRUCTION) {
+      return HaltException.create(pc, 1, format, args);
+    } else {
+      return InterruptException.createIllegalInstruction(pc);
+    }
   }
 }

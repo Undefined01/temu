@@ -47,7 +47,7 @@ public abstract class LoadNode extends Node {
 
   public LoadNode(long pc, int length, boolean signedExtend) {
     this.length = length;
-    this.isValid = true;
+    this.isValid = length != 0;
     this.signedExtend = signedExtend;
     this.rd = 0;
     this.rs1 = 0;
@@ -58,7 +58,7 @@ public abstract class LoadNode extends Node {
 
   public void throwIfInvalid() {
     if (!isValid) {
-      throw IllegalInstructionException.create(pc, 0);
+      throw IllegalInstructionException.create(pc, "Unsupported length");
     }
   }
 

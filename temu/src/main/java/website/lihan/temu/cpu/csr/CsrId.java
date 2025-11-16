@@ -1,6 +1,6 @@
 package website.lihan.temu.cpu.csr;
 
-public class CsrId {
+public final class CsrId {
   public static final int SSTATUS = 0x100;
   public static final int SIE = 0x104;
   public static final int STVEC = 0x105;
@@ -14,6 +14,8 @@ public class CsrId {
 
   public static final int MSTATUS = 0x300;
   public static final int MISA = 0x301;
+  public static final int MEDELEG = 0x302;
+  public static final int MIDELEG = 0x303;
   public static final int MIE = 0x304;
   public static final int MTVEC = 0x305;
   public static final int MSCRATCH = 0x340;
@@ -24,5 +26,8 @@ public class CsrId {
   public static final int RDCYCLE = 0xC00;
   public static final int RDTIME = 0xC01;
 
+  public static final int MVENDORID = 0xF11;
+  public static final int MARCHID = 0xF12;
+  public static final int MIMPID = 0xF13;
   public static final int MHARTID = 0xF14;
 }

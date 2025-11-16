@@ -5,8 +5,10 @@ import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.HostCompilerDirectives;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.cpu.IllegalInstructionException;
+import website.lihan.temu.cpu.RvUtils.BInstruct;
 
 public final class BranchNode extends Node {
+  public final long pc;
   public final int funct3;
   public final int rs1;
   public final int rs2;
@@ -15,11 +17,12 @@ public final class BranchNode extends Node {
   @CompilationFinal private int trueCount = 0;
   @CompilationFinal private int falseCount = 0;
 
-  public BranchNode(int funct3, int rs1, int rs2, long targetPc) {
-    this.funct3 = funct3;
-    this.rs1 = rs1;
-    this.rs2 = rs2;
-    this.targetPc = targetPc;
+  public BranchNode(BInstruct b, long pc) {
+    this.funct3 = b.funct3();
+    this.rs1 = b.rs1();
+    this.rs2 = b.rs2();
+    this.pc = pc;
+    this.targetPc = pc + b.imm();
   }
 
   public boolean condition(final long op1, final long op2) {
@@ -30,7 +33,7 @@ public final class BranchNode extends Node {
       case 0b101 -> op1 >= op2;
       case 0b110 -> Long.compareUnsigned(op1, op2) < 0;
       case 0b111 -> Long.compareUnsigned(op1, op2) >= 0;
-      default -> throw IllegalInstructionException.create("Invalid funct3 %d", funct3);
+      default -> throw IllegalInstructionException.create(pc, "Invalid funct3 %d", funct3);
     };
   }
 

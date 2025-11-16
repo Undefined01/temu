@@ -45,7 +45,7 @@ public abstract class StoreNode extends Node {
 
   public StoreNode(long pc, int length) {
     this.length = length;
-    this.isValid = true;
+    this.isValid = length != 0;
     this.rs1 = 0;
     this.rs2 = 0;
     this.offset = 0;
@@ -56,7 +56,7 @@ public abstract class StoreNode extends Node {
 
   public void throwIfInvalid() {
     if (!isValid) {
-      throw IllegalInstructionException.create(pc, 0);
+      throw IllegalInstructionException.create(pc, "Unsupported length");
     }
   }
 

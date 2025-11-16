@@ -36,9 +36,8 @@ public final class InstrToNode {
         }
         case Opcodes.BRANCH -> {
           final var b = BInstruct.decode(instr);
-          final var targetPc = pc + b.imm();
           final var nodeIdx = nodeList.size();
-          nodeList.add(new BranchNode(b.funct3(), b.rs1(), b.rs2(), targetPc));
+          nodeList.add(new BranchNode(b, pc));
           instr = Opcodes.BRANCH | (nodeIdx << 8);
           BYTES.putInt(bc, bci, instr);
         }

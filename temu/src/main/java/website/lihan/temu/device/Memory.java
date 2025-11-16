@@ -2,7 +2,7 @@ package website.lihan.temu.device;
 
 import static website.lihan.temu.cpu.RvUtils.BYTES;
 
-import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.CompilerAsserts;
 import com.oracle.truffle.api.library.ExportLibrary;
 import com.oracle.truffle.api.library.ExportMessage;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
@@ -26,8 +26,8 @@ public final class Memory {
     this.memory = new byte[size];
   }
 
-  @TruffleBoundary
   public void loadFromFile(String filename) {
+    CompilerAsserts.neverPartOfCompilation();
     var file = new File(filename);
     try (var fis = new FileInputStream(file)) {
       fis.read(memory);

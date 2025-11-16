@@ -1,19 +1,19 @@
 package website.lihan.temu.cpu;
 
 import com.oracle.truffle.api.CompilerDirectives;
-import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import com.oracle.truffle.api.CompilerDirectives.CompilationFinal;
 import com.oracle.truffle.api.nodes.Node;
 import org.graalvm.collections.EconomicMap;
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.instr.InstrToNode;
 import website.lihan.temu.cpu.instr.MemoryAccess;
 import website.lihan.temu.device.Bus;
-import website.lihan.temu.device.DeviceLibrary;
 import website.lihan.temu.mm.AccessKind;
 import website.lihan.temu.mm.MemoryException;
 
 public class ExecPageCache {
-  public static final int MAX_PAGE_SIZE = 1024 * 1024; // 1MB
+  @CompilationFinal public static int MAX_PAGE_SIZE = 1024 * 1024; // 1MB
 
   private final Rv64Context context;
   private final Bus bus;
@@ -29,34 +29,17 @@ public class ExecPageCache {
     this.bus = context.getBus();
   }
 
-  @TruffleBoundary
   public Rv64BytecodeRootNode getByEntryPoint(Rv64State cpu, long vEntryAddr) {
-    var satp = cpu.getCsrFile().satp.getValue();
-    long pAddr;
-    long pAddrStart;
-    long vAddrStart;
-    int pageSize;
-    if (satp != 0) {
-      var result = MemoryAccess.queryAddr(cpu, bus, vEntryAddr, AccessKind.Execute, false);
-      if (result.exception() != MemoryException.None) {
-        throw InterruptException.create(
-            vEntryAddr, result.exception().toExecuteException(), vEntryAddr);
-      }
-      pAddr = result.toPAddr(vEntryAddr);
-      pAddrStart = result.pAddrStart();
-      vAddrStart = result.vAddrStart();
-      pageSize = (int) (result.vAddrEnd() - result.vAddrStart());
-    } else {
-      pAddr = vEntryAddr;
-      var device = bus.findDevice(pAddr);
-      var deviceLib = DeviceLibrary.getFactory().getUncached();
-      pAddrStart = deviceLib.getStartAddress(device);
-      if (pAddr - pAddrStart >= MAX_PAGE_SIZE) {
-        pAddrStart = pAddr & ~(MAX_PAGE_SIZE - 1);
-      }
-      pageSize = (int) Math.min(deviceLib.getEndAddress(device) - pAddrStart, MAX_PAGE_SIZE);
-      vAddrStart = pAddrStart;
+    var result = MemoryAccess.queryAddr(cpu, bus, vEntryAddr, AccessKind.Execute, false);
+    if (result.exception() != MemoryException.None) {
+      throw InterruptException.create(
+          vEntryAddr, result.exception().toExecuteException(), vEntryAddr);
     }
+    var pAddr = result.toPAddr(vEntryAddr);
+    var pAddrStart = result.pAddrStart();
+    var vAddrStart = result.vAddrStart();
+    var pageSize = (int) (result.vAddrEnd() - result.vAddrStart());
+
     var subAddr = (int) (pAddr - pAddrStart);
     var rootNode = rootCache.get(vEntryAddr);
     if (rootNode == null) {
@@ -71,6 +54,7 @@ public class ExecPageCache {
         nodeCache.put(vAddrStart, cachedNodes);
       }
       if (vEntryAddr >= vAddrStart + bc.length) {
+        Utils.printf("vaddr=%x, [%x, %x)\n", vEntryAddr, vAddrStart, vAddrStart + bc.length);
         throw CompilerDirectives.shouldNotReachHere();
       }
       var node = new Rv64BytecodeNode(vAddrStart, bc, cachedNodes, subAddr, cpu);

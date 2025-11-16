@@ -54,8 +54,6 @@ public class BitFieldProcessor extends AbstractProcessor {
     String generatedClassName;
     if (originalClassName.endsWith("Def")) {
       generatedClassName = originalClassName.substring(0, originalClassName.length() - 3);
-      System.err.println(
-          "Stripping Def suffix from " + originalClassName + " to form " + generatedClassName);
     } else {
       generatedClassName = originalClassName + "Gen";
     }
@@ -159,14 +157,15 @@ public class BitFieldProcessor extends AbstractProcessor {
       writer.println("        long diff = this.value ^ newValue;");
       writer.println();
       writer.println("        // Handle WPRI fields: Write Preserve, Read Ignored");
-      writer.println("        if ((diff & WPRI_FIELDS_MASK) != 0) {");
+      writer.println("        var wpriDiff = diff & WPRI_FIELDS_MASK;");
+      writer.println("        if (wpriDiff != 0) {");
       writer.println(
           "            Utils.printf(\"Ignoring write to WPRI fields %016x in "
               + originalClassName
-              + "\\n\", diff & WPRI_FIELDS_MASK);");
-      writer.println("            diff &= ~WPRI_FIELDS_MASK; // Clear diff bits for WPRI fields");
+              + "\\n\", wpriDiff);");
+      writer.println("            diff ^= wpriDiff; // Clear diff bits for WPRI fields");
       writer.println(
-          "            newValue = (newValue & ~WPRI_FIELDS_MASK) | (this.value & WPRI_FIELDS_MASK); // Preserve old value");
+          "            newValue ^= wpriDiff; // Preserve old value");
       writer.println("        }");
       writer.println();
       writer.println("        // Handle Trivial fields: Simple R/W");

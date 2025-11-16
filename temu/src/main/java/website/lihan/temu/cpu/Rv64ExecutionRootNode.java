@@ -41,10 +41,6 @@ public class Rv64ExecutionRootNode extends RootNode {
       } catch (HaltException e) {
         Utils.printf("%s\n", e);
         return 0;
-      } catch (IllegalInstructionException t) {
-        Utils.printf("Unexpected exception: %s\n", t);
-        Utils.printStackTrace(t);
-        return -1;
       } catch (Throwable t) {
         Utils.printf("Unexpected exception: %s\n", t);
         Utils.printStackTrace(t);

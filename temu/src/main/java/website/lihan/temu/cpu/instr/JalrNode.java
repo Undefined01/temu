@@ -7,6 +7,7 @@ import com.oracle.truffle.api.nodes.DirectCallNode;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.cpu.ExecPageCache;
 import website.lihan.temu.cpu.Rv64State;
 
 public abstract class JalrNode extends Node {
@@ -15,13 +16,15 @@ public abstract class JalrNode extends Node {
   public final int rd;
   public final long returnPc;
   private final Rv64Context context;
+  private final ExecPageCache pageCache;
 
   public JalrNode(int rs1, int imm, int rd, long returnPc) {
     this.rs1 = rs1;
     this.imm = imm;
     this.rd = rd;
     this.returnPc = returnPc;
-    context = Rv64Context.get(this);
+    this.context = Rv64Context.get(this);
+    this.pageCache = context.getExecPageCache();
   }
 
   public abstract void execute(Rv64State cpu);
@@ -34,13 +37,13 @@ public abstract class JalrNode extends Node {
       @Cached("getTargetPc(cpu)") long cachedTargetPc,
       @Cached("getCallTarget(cpu, cachedTargetPc)") CallTarget cachedCallTarget,
       @Cached("create(cachedCallTarget)") DirectCallNode directCallNode) {
-    cpu.setReg(rd, returnPc); // ra
+    cpu.setReg(rd, returnPc);
     directCallNode.call(0, returnPc);
   }
 
   @Specialization(replaces = "doDirect")
   void doIndirect(Rv64State cpu, @Cached IndirectCallNode indirectCallNode) {
-    cpu.setReg(rd, returnPc); // ra
+    cpu.setReg(rd, returnPc);
     var callTarget = getCallTarget(cpu, getTargetPc(cpu));
     indirectCallNode.call(callTarget, 0, returnPc);
   }
@@ -50,6 +53,6 @@ public abstract class JalrNode extends Node {
   }
 
   CallTarget getCallTarget(Rv64State cpu, long targetPc) {
-    return context.getExecPageCache().getByEntryPoint(cpu, targetPc).getCallTarget();
+    return pageCache.getByEntryPoint(cpu, targetPc).getCallTarget();
   }
 }

@@ -5,7 +5,7 @@ import com.oracle.truffle.api.library.ExportMessage;
 import website.lihan.temu.Utils;
 
 @ExportLibrary(CsrLibrary.class)
-public class SStatus {
+public final class SStatus {
   private MStatus value;
 
   public static final long mask =

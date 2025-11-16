@@ -7,10 +7,11 @@ import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.DirectCallNode;
 import com.oracle.truffle.api.nodes.Node;
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.cpu.RegId;
 import website.lihan.temu.cpu.Rv64State;
 import website.lihan.temu.cpu.RvUtils.JInstruct;
 
-public class JalNode extends Node {
+public final class JalNode extends Node {
   public final long targetPc;
   public final long returnPc;
   public final int rd;
@@ -34,7 +35,7 @@ public class JalNode extends Node {
       this.target = targetNode.getCallTarget();
       this.directCallNode = DirectCallNode.create(target);
     }
-    cpu.setReg(1, returnPc); // ra
+    cpu.setReg(RegId.ra, returnPc);
     directCallNode.call(0, returnPc);
   }
 

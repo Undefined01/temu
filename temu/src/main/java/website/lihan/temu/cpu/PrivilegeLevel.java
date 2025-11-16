@@ -16,4 +16,12 @@ public enum PrivilegeLevel {
       default -> throw CompilerDirectives.shouldNotReachHere();
     };
   }
+
+  public int level() {
+    return switch (this) {
+      case U -> 0;
+      case S -> 1;
+      case M -> 3;
+    };
+  }
 }

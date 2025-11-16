@@ -9,6 +9,16 @@ public class Utils {
   }
 
   @TruffleBoundary
+  public static void printf(String format, long arg1) {
+    System.err.printf(format, arg1);
+  }
+
+  @TruffleBoundary
+  public static void printf(String format, long arg1, long arg2) {
+    System.err.printf(format, arg1, arg2);
+  }
+
+  @TruffleBoundary
   public static void printStackTrace(Throwable t) {
     t.printStackTrace();
   }

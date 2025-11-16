@@ -1,5 +1,6 @@
 package website.lihan.temu.cpu;
 
+import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.nodes.ControlFlowException;
 
@@ -48,11 +49,40 @@ public class InterruptException extends ControlFlowException {
 
   @TruffleBoundary
   public static InterruptException create(long pc, long cause) {
+    switch ((int) cause) {
+      case (int) Cause.BREAKPOINT,
+          (int) Cause.INST_ADDR_MISALIGNED,
+          (int) Cause.LOAD_ADDR_MISALIGNED,
+          (int) Cause.STORE_ADDR_MISALIGNED,
+          (int) Cause.INST_ACCESS_FAULT,
+          (int) Cause.LOAD_ACCESS_FAULT,
+          (int) Cause.STORE_ACCESS_FAULT,
+          (int) Cause.INSTRUCTION_PAGE_FAULT,
+          (int) Cause.LOAD_PAGE_FAULT,
+          (int) Cause.STORE_PAGE_FAULT ->
+          throw CompilerDirectives.shouldNotReachHere(
+              "Use create(pc, cause, stval) for exceptions with stval");
+    }
     return new InterruptException(pc, cause, 0L);
   }
 
   @TruffleBoundary
   public static InterruptException create(long pc, long cause, long stval) {
+    switch ((int) cause) {
+      case (int) Cause.BREAKPOINT,
+          (int) Cause.INST_ADDR_MISALIGNED,
+          (int) Cause.LOAD_ADDR_MISALIGNED,
+          (int) Cause.STORE_ADDR_MISALIGNED,
+          (int) Cause.INST_ACCESS_FAULT,
+          (int) Cause.LOAD_ACCESS_FAULT,
+          (int) Cause.STORE_ACCESS_FAULT,
+          (int) Cause.INSTRUCTION_PAGE_FAULT,
+          (int) Cause.LOAD_PAGE_FAULT,
+          (int) Cause.STORE_PAGE_FAULT -> {}
+      default ->
+          throw CompilerDirectives.shouldNotReachHere(
+              "Use create(pc, cause) for exceptions without stval");
+    }
     return new InterruptException(pc, cause, stval);
   }
 

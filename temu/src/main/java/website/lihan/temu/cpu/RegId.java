@@ -1,6 +1,6 @@
 package website.lihan.temu.cpu;
 
-public class RegNames {
+public class RegId {
   public static final int zero = 0;
   public static final int ra = 1;
   public static final int sp = 2;
