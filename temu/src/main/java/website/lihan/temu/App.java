@@ -14,6 +14,7 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.io.ByteSequence;
+import website.lihan.temu.cpu.sbi.Sbi;
 
 public class App {
   private static final String LANG = "rv64";
@@ -61,16 +62,9 @@ public class App {
     }
 
     try {
-      // var scope = context.getBindings(Rv64BytecodeLanguage.ID).as(Rv64Scope.class);
-      // var dts = Files.readAllBytes(Path.of("initramfs/temu.dtb"));
-      // var dtsAddr = 0x81000000L;
-      // scope.bus.executeWrite(dtsAddr, dts, dts.length);
-      // scope.context.state.setReg(RegNames.a0, 0);
-      // scope.context.state.setReg(RegNames.a1, dtsAddr);
-      context.eval(source);
+      // context.eval(source);
+      startWithSbi(context, source);
       return 0;
-      // } catch (IOException ex) {
-      //   throw new RuntimeException(ex);
     } catch (PolyglotException ex) {
       ex.printStackTrace();
       return 1;
@@ -99,5 +93,12 @@ public class App {
     }
     options.put(key, value);
     return true;
+  }
+
+  private static void startWithSbi(Context context, Source source) {
+    var dts = Path.of("temu/src/test/linux/initramfs/build/temu.dtb");
+    var scope = context.getBindings(Rv64BytecodeLanguage.ID).as(Rv64Scope.class);
+    Sbi.enableEmulateSbi(scope, dts);
+    context.eval(source);
   }
 }

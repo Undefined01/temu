@@ -30,4 +30,12 @@ public class Utils {
     }
     return high;
   }
+
+  public static long unsignedMax(long a, long b) {
+    return Long.compareUnsigned(a, b) >= 0 ? a : b;
+  }
+
+  public static long unsignedMin(long a, long b) {
+    return Long.compareUnsigned(a, b) < 0 ? a : b;
+  }
 }

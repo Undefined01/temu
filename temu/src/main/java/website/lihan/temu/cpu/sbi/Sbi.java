@@ -3,11 +3,32 @@ package website.lihan.temu.cpu.sbi;
 import static website.lihan.temu.cpu.sbi.Sbi.ExtIDs.*;
 
 import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import website.lihan.temu.Configuration;
+import website.lihan.temu.Rv64Scope;
 import website.lihan.temu.Utils;
+import website.lihan.temu.cpu.PrivilegeLevel;
 import website.lihan.temu.cpu.RegId;
 import website.lihan.temu.cpu.Rv64State;
 
 public final class Sbi {
+  public static void enableEmulateSbi(Rv64Scope scope, Path dts) {
+    Configuration.emulateSbi = true;
+    try {
+      var dtsContent = Files.readAllBytes(dts);
+      var dtsAddr = 0x81000000L;
+      scope.bus.executeWrite(dtsAddr, dtsContent, dtsContent.length);
+      scope.context.state.setReg(RegId.a0, 0);
+      scope.context.state.setReg(RegId.a1, dtsAddr);
+      scope.context.state.setPrivilegeLevel(PrivilegeLevel.S);
+      scope.context.state.getCsrFile().medeleg.setValue(0b1111_1111_1111_1111L);
+    } catch (IOException ex) {
+      throw new RuntimeException(ex);
+    }
+  }
+
   @TruffleBoundary
   public static void handle(Rv64State cpu) {
     var ext = cpu.getReg(RegId.a7);

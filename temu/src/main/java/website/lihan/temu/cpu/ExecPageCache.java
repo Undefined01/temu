@@ -10,7 +10,6 @@ import website.lihan.temu.cpu.instr.InstrToNode;
 import website.lihan.temu.cpu.instr.MemoryAccess;
 import website.lihan.temu.device.Bus;
 import website.lihan.temu.mm.AccessKind;
-import website.lihan.temu.mm.MemoryException;
 
 public class ExecPageCache {
   @CompilationFinal public static int MAX_PAGE_SIZE = 1024 * 1024; // 1MB
@@ -31,7 +30,7 @@ public class ExecPageCache {
 
   public Rv64BytecodeRootNode getByEntryPoint(Rv64State cpu, long vEntryAddr) {
     var result = MemoryAccess.queryAddr(cpu, bus, vEntryAddr, AccessKind.Execute, false);
-    if (result.exception() != MemoryException.None) {
+    if (result.exception() != null) {
       throw InterruptException.create(
           vEntryAddr, result.exception().toExecuteException(), vEntryAddr);
     }

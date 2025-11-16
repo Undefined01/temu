@@ -4,6 +4,7 @@ import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.nodes.IndirectCallNode;
 import com.oracle.truffle.api.nodes.Node.Child;
 import com.oracle.truffle.api.nodes.RootNode;
+import website.lihan.temu.Configuration;
 import website.lihan.temu.Rv64BytecodeLanguage;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.Utils;
@@ -33,11 +34,13 @@ public class Rv64ExecutionRootNode extends RootNode {
         var rootNode = pageCache.getByEntryPoint(cpu, pc);
         callNode.call(rootNode.getCallTarget(), 0);
       } catch (JumpException e) {
-        // Utils.printf("JumpException to 0x%08x\n", e.getTargetPc());
         pc = e.getTargetPc();
       } catch (InterruptException e) {
+        var oldPriv = cpu.getPrivilegeLevel();
         pc = SystemOp.doInterrupt(cpu, e);
-        // Utils.printf("InterruptException from 0x%08x to 0x%08x, cause=%d\n", e.pc, pc, e.cause);
+        if (Configuration.ftrace) {
+          Utils.printf("InterruptException from %s 0x%08x to %s 0x%08x, cause=%d\n", oldPriv, e.pc, cpu.getPrivilegeLevel(), pc, e.cause);
+        }
       } catch (HaltException e) {
         Utils.printf("%s\n", e);
         return 0;

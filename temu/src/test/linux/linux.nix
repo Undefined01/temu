@@ -4,10 +4,12 @@
 
 let
   lib = pkgs.lib;
-  riscvPkgs = pkgs.pkgsCross.riscv64-embedded;
-  riscvTriplet = "riscv64_none_elf";
-  riscvCrossCompile = "riscv64-none-elf-";
-  # riscvTriplet = "riscv64_unknown_linux_gnu";
+  # riscvPkgs = pkgs.pkgsCross.riscv64-embedded;
+  # riscvTriplet = "riscv64_none_elf";
+  # riscvCrossCompile = "riscv64-none-elf-";
+  riscvPkgs = pkgs.pkgsCross.riscv64;
+  riscvTriplet = "riscv64_unknown_linux_gnu";
+  riscvCrossCompile = "riscv64-unknown-linux-gnu-";
   commonCFlags = [
     "-march=rv64ima_zicsr"
     "-mabi=lp64"
@@ -49,21 +51,23 @@ let
       CFLAGS = (pkgs.lib.optionals (old ? CFLAGS) old.CFLAGS) ++ commonCFlags;
     })
   );
-  rt-lib = "${rt.out}/lib/baremetal";
-  # rt-lib = "${rt.out}/lib/linux";
+  # rt-lib = "${rt.out}/lib/baremetal";
+  rt-lib = "${rt.out}/lib/linux";
 
   # gcc -dumpspecs
   # https://gcc.gnu.org/onlinedocs/gcc-13.2.0/gcc/Spec-Files.html
   # https://wozniak.ca/blog/2024/01/09/1/
   specFile = pkgs.writeText "riscv64-embedded-musl.specs" ''
+    %include <${musl.dev}/lib/musl-gcc.specs>
+
     *startfile:
-    ${musl.out}/lib/crt1.o ${musl.out}/lib/crti.o ${musl.out}/lib/crtn.o
+    ${musl.out}/lib/Scrt1.o ${musl.out}/lib/crti.o
 
     *endfile:
-
+    ${musl.out}/lib/crtn.o
 
     *libgcc:
-    -lclang_rt.builtins-riscv64
+    -L ${rt-lib} -lclang_rt.builtins-riscv64
   '';
 in
 pkgs.mkShell {
@@ -85,15 +89,8 @@ pkgs.mkShell {
   # see the cc-wrapper by `less $(dirname $(which riscv64-unknown-linux-gnu-gcc))/../nix-support/add-flags.sh`
   "NIX_CFLAGS_COMPILE_${riscvTriplet}" = [
     "-isystem ${musl.dev}/include"
-    "-specs=${specFile}"
-    "-D__linux__"
-    "-nodefaultlibs"
-    "-march=rv64ima_zicsr_zifencei"
-    "-mabi=lp64"
-    "-mcmodel=medany"
-    "-L${musl.out}/lib"
-    "-L${rt-lib}"
-  ];
+    "-specs ${specFile}"
+  ] ++ commonCFlags;
   "NIX_LDFLAGS_${riscvTriplet}" = [
     "-L${musl.out}/lib"
     "-L${rt-lib}"

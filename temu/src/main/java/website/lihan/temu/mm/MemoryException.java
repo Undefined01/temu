@@ -4,7 +4,6 @@ import com.oracle.truffle.api.CompilerDirectives;
 import website.lihan.temu.cpu.InterruptException.Cause;
 
 public enum MemoryException {
-  None,
   AccessFault,
   PageFault,
   ;

@@ -164,8 +164,7 @@ public class BitFieldProcessor extends AbstractProcessor {
               + originalClassName
               + "\\n\", wpriDiff);");
       writer.println("            diff ^= wpriDiff; // Clear diff bits for WPRI fields");
-      writer.println(
-          "            newValue ^= wpriDiff; // Preserve old value");
+      writer.println("            newValue ^= wpriDiff; // Preserve old value");
       writer.println("        }");
       writer.println();
       writer.println("        // Handle Trivial fields: Simple R/W");
@@ -178,7 +177,7 @@ public class BitFieldProcessor extends AbstractProcessor {
         if (info.behavior == Behavior.WARL) {
           writer.printf("        if ((diff & %s_MASK) != 0) {%n", info.constName);
           writer.printf(
-              "            set%s((%s)((newValue & %s_MASK) >> %s_OFFSET));%n",
+              "            set%s((%s)((newValue & %s_MASK) >>> %s_OFFSET));%n",
               info.capitalizedName, info.typeName, info.constName, info.constName);
           writer.println("        }");
         }
@@ -196,7 +195,7 @@ public class BitFieldProcessor extends AbstractProcessor {
       writer.printf("        return (value & %s_MASK) != 0;%n", info.constName);
     } else {
       writer.printf(
-          "        return (%s)((value & %s_MASK) >> %s_OFFSET);%n",
+          "        return (%s)((value & %s_MASK) >>> %s_OFFSET);%n",
           info.typeName, info.constName, info.constName);
     }
     writer.println("    }");
@@ -220,11 +219,11 @@ public class BitFieldProcessor extends AbstractProcessor {
               .collect(Collectors.joining(" && "));
       writer.println("        if (" + check + ") {");
       writer.println(
-          "            Utils.printf(\"Ignoring illegal write value %d for field "
-              + info.fieldName
-              + " in "
+          "            Utils.printf(\"Ignoring illegal write to CSR field "
               + info.enclosingClass
-              + "\\n\", "
+              + "."
+              + info.fieldName
+              + " with value %x\\n\", "
               + info.fieldName
               + ");");
       writer.println("            return;");

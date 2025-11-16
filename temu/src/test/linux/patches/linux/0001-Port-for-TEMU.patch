@@ -1,39 +1,38 @@
-From c21cf2b981d55ddbda91ddc86860e2f3b93c4b2e Mon Sep 17 00:00:00 2001
+From ca1e13aa7e8551581d0455d2a842bb90ae7e9ec3 Mon Sep 17 00:00:00 2001
 From: Undefined01 <amoscr@163.com>
 Date: Sun, 2 Nov 2025 16:49:28 +0800
 Subject: [PATCH] Port for TEMU
 
 ---
- .config                           | 1606 +++++++++++++++++++++++++++++
- arch/riscv/configs/temu_defconfig |   69 ++
+ .config                           | 1639 +++++++++++++++++++++++++++++
+ arch/riscv/configs/temu_defconfig |   74 ++
  arch/riscv/kernel/head.S          |    1 +
- 3 files changed, 1676 insertions(+)
+ 3 files changed, 1714 insertions(+)
  create mode 100644 .config
  create mode 100644 arch/riscv/configs/temu_defconfig
 
 diff --git a/.config b/.config
 new file mode 100644
-index 000000000..1644a7302
+index 000000000..f621e8e03
 --- /dev/null
 +++ b/.config
-@@ -0,0 +1,1606 @@
+@@ -0,0 +1,1639 @@
 +#
 +# Automatically generated file; DO NOT EDIT.
 +# Linux/riscv 6.17.0 Kernel Configuration
 +#
-+CONFIG_CC_VERSION_TEXT="riscv64-linux-gnu-gcc (Debian 10.2.1-6) 10.2.1 20210110"
++CONFIG_CC_VERSION_TEXT="riscv64-none-elf-gcc (GCC) 14.3.0"
 +CONFIG_CC_IS_GCC=y
-+CONFIG_GCC_VERSION=100201
++CONFIG_GCC_VERSION=140300
 +CONFIG_CLANG_VERSION=0
 +CONFIG_AS_IS_GNU=y
-+CONFIG_AS_VERSION=23502
++CONFIG_AS_VERSION=24400
 +CONFIG_LD_IS_BFD=y
-+CONFIG_LD_VERSION=23502
++CONFIG_LD_VERSION=24400
 +CONFIG_LLD_VERSION=0
-+CONFIG_RUSTC_VERSION=107200
-+CONFIG_RUSTC_LLVM_VERSION=160005
++CONFIG_RUSTC_VERSION=0
++CONFIG_RUSTC_LLVM_VERSION=0
 +CONFIG_CC_CAN_LINK=y
-+CONFIG_GCC_ASM_GOTO_OUTPUT_BROKEN=y
 +CONFIG_CC_HAS_ASM_INLINE=y
 +CONFIG_CC_HAS_NO_PROFILE_FN_ATTR=y
 +CONFIG_LD_CAN_USE_KEEP_IN_OVERLAY=y
@@ -164,7 +163,7 @@ index 000000000..1644a7302
 +# CONFIG_SCHED_AUTOGROUP is not set
 +# CONFIG_RELAY is not set
 +CONFIG_BLK_DEV_INITRD=y
-+CONFIG_INITRAMFS_SOURCE="${initramfs}/linux_initramfs_source.txt"
++CONFIG_INITRAMFS_SOURCE="${INITRAMFS}/linux_initramfs_source.txt"
 +CONFIG_INITRAMFS_ROOT_UID=0
 +CONFIG_INITRAMFS_ROOT_GID=0
 +CONFIG_RD_GZIP=y
@@ -270,6 +269,7 @@ index 000000000..1644a7302
 +CONFIG_PGTABLE_LEVELS=5
 +CONFIG_LOCKDEP_SUPPORT=y
 +CONFIG_AS_HAS_INSN=y
++CONFIG_AS_HAS_OPTION_ARCH=y
 +
 +#
 +# SoC selection
@@ -311,12 +311,25 @@ index 000000000..1644a7302
 +# CONFIG_RISCV_ISA_SUPM is not set
 +# CONFIG_RISCV_ISA_SVNAPOT is not set
 +# CONFIG_RISCV_ISA_SVPBMT is not set
++CONFIG_TOOLCHAIN_HAS_V=y
 +# CONFIG_RISCV_ISA_ZAWRS is not set
++CONFIG_TOOLCHAIN_HAS_ZABHA=y
++# CONFIG_RISCV_ISA_ZABHA is not set
++CONFIG_TOOLCHAIN_HAS_ZACAS=y
++# CONFIG_RISCV_ISA_ZACAS is not set
++CONFIG_TOOLCHAIN_HAS_ZBB=y
++CONFIG_TOOLCHAIN_HAS_VECTOR_CRYPTO=y
++CONFIG_TOOLCHAIN_HAS_ZBA=y
 +# CONFIG_RISCV_ISA_ZBA is not set
 +# CONFIG_RISCV_ISA_ZBB is not set
++CONFIG_TOOLCHAIN_HAS_ZBC=y
++# CONFIG_RISCV_ISA_ZBC is not set
++CONFIG_TOOLCHAIN_HAS_ZBKB=y
++# CONFIG_RISCV_ISA_ZBKB is not set
 +# CONFIG_RISCV_ISA_ZICBOM is not set
 +# CONFIG_RISCV_ISA_ZICBOZ is not set
 +# CONFIG_RISCV_ISA_ZICBOP is not set
++CONFIG_TOOLCHAIN_NEEDS_EXPLICIT_ZICSR_ZIFENCEI=y
 +# CONFIG_FPU is not set
 +# CONFIG_IRQ_STACKS is not set
 +CONFIG_THREAD_SIZE_ORDER=2
@@ -377,6 +390,8 @@ index 000000000..1644a7302
 +#
 +CONFIG_CMDLINE=""
 +# CONFIG_EFI is not set
++CONFIG_CC_HAVE_STACKPROTECTOR_TLS=y
++CONFIG_STACKPROTECTOR_PER_TASK=y
 +# CONFIG_PHYS_RAM_BASE_FIXED is not set
 +# CONFIG_RISCV_ISA_FALLBACK is not set
 +# CONFIG_BUILTIN_DTB is not set
@@ -513,7 +528,11 @@ index 000000000..1644a7302
 +# end of GCOV-based kernel profiling
 +
 +CONFIG_HAVE_GCC_PLUGINS=y
++CONFIG_GCC_PLUGINS=y
++# CONFIG_GCC_PLUGIN_LATENT_ENTROPY is not set
 +CONFIG_FUNCTION_ALIGNMENT=0
++CONFIG_CC_HAS_MIN_FUNCTION_ALIGNMENT=y
++CONFIG_CC_HAS_SANE_FUNCTION_ALIGNMENT=y
 +# end of General architecture-dependent options
 +
 +CONFIG_RT_MUTEXES=y
@@ -1319,9 +1338,17 @@ index 000000000..1644a7302
 +#
 +# Memory initialization
 +#
-+CONFIG_INIT_STACK_NONE=y
++CONFIG_CC_HAS_AUTO_VAR_INIT_PATTERN=y
++CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO_BARE=y
++CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO=y
++# CONFIG_INIT_STACK_NONE is not set
++# CONFIG_INIT_STACK_ALL_PATTERN is not set
++CONFIG_INIT_STACK_ALL_ZERO=y
++# CONFIG_KSTACK_ERASE is not set
 +# CONFIG_INIT_ON_ALLOC_DEFAULT_ON is not set
 +# CONFIG_INIT_ON_FREE_DEFAULT_ON is not set
++CONFIG_CC_HAS_ZERO_CALL_USED_REGS=y
++# CONFIG_ZERO_CALL_USED_REGS is not set
 +# end of Memory initialization
 +
 +#
@@ -1339,6 +1366,8 @@ index 000000000..1644a7302
 +# end of Hardening of kernel data structures
 +
 +CONFIG_RANDSTRUCT_NONE=y
++# CONFIG_RANDSTRUCT_FULL is not set
++# CONFIG_RANDSTRUCT_PERFORMANCE is not set
 +# end of Kernel hardening options
 +# end of Security options
 +
@@ -1447,6 +1476,7 @@ index 000000000..1644a7302
 +#
 +# Compile-time checks and compiler options
 +#
++CONFIG_AS_HAS_NON_CONST_ULEB128=y
 +CONFIG_DEBUG_INFO_NONE=y
 +# CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT is not set
 +# CONFIG_DEBUG_INFO_DWARF4 is not set
@@ -1474,6 +1504,7 @@ index 000000000..1644a7302
 +# CONFIG_KGDB is not set
 +CONFIG_ARCH_HAS_UBSAN=y
 +# CONFIG_UBSAN is not set
++CONFIG_HAVE_KCSAN_COMPILER=y
 +# end of Generic Kernel Debugging Instruments
 +
 +#
@@ -1602,6 +1633,7 @@ index 000000000..1644a7302
 +#
 +# arch/riscv/kernel Testing and Coverage
 +#
++CONFIG_AS_HAS_ULEB128=y
 +CONFIG_RUNTIME_KERNEL_TESTING_MENU=y
 +# end of arch/riscv/kernel Testing and Coverage
 +# end of riscv Debugging
@@ -1613,6 +1645,7 @@ index 000000000..1644a7302
 +# CONFIG_NOTIFIER_ERROR_INJECTION is not set
 +# CONFIG_FAULT_INJECTION is not set
 +CONFIG_ARCH_HAS_KCOV=y
++# CONFIG_KCOV is not set
 +# CONFIG_RUNTIME_TESTING_MENU is not set
 +CONFIG_ARCH_USE_MEMTEST=y
 +# CONFIG_MEMTEST is not set
@@ -1625,22 +1658,27 @@ index 000000000..1644a7302
 +# end of Kernel hacking
 diff --git a/arch/riscv/configs/temu_defconfig b/arch/riscv/configs/temu_defconfig
 new file mode 100644
-index 000000000..488619464
+index 000000000..5615d00e6
 --- /dev/null
 +++ b/arch/riscv/configs/temu_defconfig
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,74 @@
 +CONFIG_FPU=n
 +CONFIG_RISCV_ISA_FALLBACK=n
 +CONFIG_RISCV_ISA_C=n
++CONFIG_RISCV_ALTERNATIVE=n
 +CONFIG_RISCV_ISA_SUPM=n
 +CONFIG_RISCV_ISA_SVNAPOT=n
 +CONFIG_RISCV_ISA_SVPBMT=n
++CONFIG_RISCV_ISA_ZABHA=n
++CONFIG_RISCV_ISA_ZACAS=n
 +CONFIG_RISCV_ISA_ZAWRS=n
 +CONFIG_RISCV_ISA_ZBA=n
 +CONFIG_RISCV_ISA_ZBB=n
++CONFIG_RISCV_ISA_ZBC=n
++CONFIG_RISCV_ISA_ZBKB=n
 +CONFIG_RISCV_ISA_ZICBOM=n
-+CONFIG_RISCV_ISA_ZICBOZ=n
 +CONFIG_RISCV_ISA_ZICBOP=n
++CONFIG_RISCV_ISA_ZICBOZ=n
 +CONFIG_EFI=n
 +CONFIG_IRQ_STACKS=n
 +CONFIG_RISCV_PROBE_UNALIGNED_ACCESS=n
@@ -1650,7 +1688,7 @@ index 000000000..488619464
 +# CONFIG_CROSS_MEMORY_ATTACH is not set
 +CONFIG_LOG_BUF_SHIFT=15
 +CONFIG_BLK_DEV_INITRD=y
-+CONFIG_INITRAMFS_SOURCE="${initramfs}/linux_initramfs_source.txt"
++CONFIG_INITRAMFS_SOURCE="${INITRAMFS}/linux_initramfs_source.txt"
 +CONFIG_EXPERT=y
 +# CONFIG_SYSFS_SYSCALL is not set
 +# CONFIG_FHANDLE is not set
@@ -1698,7 +1736,6 @@ index 000000000..488619464
 +# CONFIG_RCU_TRACE is not set
 +# CONFIG_FTRACE is not set
 +# CONFIG_RUNTIME_TESTING_MENU is not set
-\ No newline at end of file
 diff --git a/arch/riscv/kernel/head.S b/arch/riscv/kernel/head.S
 index bdf3352ac..f90cacb07 100644
 --- a/arch/riscv/kernel/head.S

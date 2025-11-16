@@ -2,6 +2,7 @@ package website.lihan.temu.cpu.instr;
 
 import com.oracle.truffle.api.CompilerDirectives;
 import com.oracle.truffle.api.nodes.Node;
+import website.lihan.temu.Configuration;
 import website.lihan.temu.Rv64Context;
 import website.lihan.temu.cpu.HaltException;
 import website.lihan.temu.cpu.IllegalInstructionException;
@@ -91,8 +92,11 @@ public final class SystemOp {
         switch (cpu.getPrivilegeLevel()) {
           case U -> throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_U_MODE);
           case S -> {
-            Sbi.handle(cpu);
-            // throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_S_MODE);
+            if (Configuration.emulateSbi) {
+              Sbi.handle(cpu);
+            } else {
+              throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_S_MODE);
+            }
           }
           case M -> throw InterruptException.create(pc, InterruptException.Cause.ECALL_FROM_M_MODE);
           default -> throw CompilerDirectives.shouldNotReachHere();

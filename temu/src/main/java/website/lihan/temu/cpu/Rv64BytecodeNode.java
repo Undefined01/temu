@@ -9,7 +9,9 @@ import com.oracle.truffle.api.memory.ByteArraySupport;
 import com.oracle.truffle.api.nodes.BytecodeOSRNode;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 import com.oracle.truffle.api.nodes.Node;
+import website.lihan.temu.Configuration;
 import website.lihan.temu.Rv64Context;
+import website.lihan.temu.Utils;
 import website.lihan.temu.cpu.RvUtils.IInstruct;
 import website.lihan.temu.cpu.RvUtils.UInstruct;
 import website.lihan.temu.cpu.instr.Amo;
@@ -81,16 +83,30 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
     int bci = startBci;
     while (true) {
       CompilerAsserts.partialEvaluationConstant(bci);
-      if (bci + 4 > bc.length) {
+      int nextBci = bci + 4;
+      if (nextBci > bc.length) {
         // reached the end of the bytecode page
         throw JumpException.create(getPc(bci));
       }
       int instr = BYTES.getInt(bc, bci);
       CompilerAsserts.partialEvaluationConstant(instr);
 
-      // website.lihan.temu.Utils.printf("pc=%08x: %08x, sp=%08x, ra=%08x\n", baseAddr + bci, instr,
-      // cpu.getReg(2), cpu.getReg(1));
-      int nextBci = bci + 4;
+      if (getPc(bci) == Configuration.itraceStart) {
+        CompilerDirectives.transferToInterpreterAndInvalidate();
+        Configuration.itrace = true;
+      }
+      if (Configuration.itrace) {
+        website.lihan.temu.Utils.printf(
+            "pc=%08x: %08x, sp=%08x, ra=%08x, a0=%08x, a1=%08x, a2=%08x, stvec=%08x\n",
+            baseAddr + bci,
+            instr,
+            cpu.getReg(RegId.sp),
+            cpu.getReg(RegId.ra),
+            cpu.getReg(RegId.a0),
+            cpu.getReg(RegId.a1),
+            cpu.getReg(RegId.a2),
+            cpu.getCsrFile().stvec.getValue());
+      }
 
       int opcode = instr & 0x7f;
       switch (opcode) {
@@ -113,7 +129,9 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
             // If the following ret instruction (jalr zero, 0(ra)) is jumping back to
             // the caller (ra == current_pc + 4), we can optimize out the JumpException
             // and simply return to the caller directly.
-            // Utils.printf("Calling from %08x to %08x\n", getPc(bci), node.targetPc);
+            if (Configuration.ftrace) {
+              Utils.printf("Calling from %08x to %08x\n", getPc(bci), node.targetPc);
+            }
             node.call(cpu);
           } else {
             final var targetPc = node.targetPc;
@@ -135,13 +153,19 @@ public class Rv64BytecodeNode extends Node implements BytecodeOSRNode {
           // optimize out the JumpException throwing and just return to the caller directly.
           final var nextPc = cpu.getReg(node.rs1) + node.imm;
           if (node.rd == 1) {
-            // Utils.printf("Indirect call from %08x to %08x\n", getPc(bci), nextPc);
+            if (Configuration.ftrace) {
+              Utils.printf("Indirect call from %08x to %08x\n", getPc(bci), nextPc);
+            }
             node.execute(cpu);
           } else if (node.rd == 0 && JalNode.jalrIsReturn(frame, nextPc)) {
-            // Utils.printf("Returning from %08x to %08x\n", getPc(bci), nextPc);
+            if (Configuration.ftrace) {
+              Utils.printf("Returning from %08x to %08x\n", getPc(bci), nextPc);
+            }
             return 0;
           } else {
-            // Utils.printf("Indirect jump from %08x to %08x\n", getPc(bci), nextPc);
+            if (Configuration.ftrace) {
+              Utils.printf("Indirect jump from %08x to %08x\n", getPc(bci), nextPc);
+            }
             cpu.setReg(node.rd, node.returnPc);
             // nextBci must be a constant during explode looping. But the targetPc of jalr
             // instruction
