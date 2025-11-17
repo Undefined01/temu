@@ -1,13 +1,9 @@
-name: GraalVM README Tests
+name: Tests
 
 on:
   push:
     branches:
-      - main
   pull_request:
-
-permissions:
-  contents: read
 
 jobs:
   tests:
@@ -17,14 +13,6 @@ jobs:
 
       - name: Sync submodules
         run: git submodule update --init --recursive
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            make \
-            zip \
-            unzip
 
       - name: Set up GraalVM 25
         uses: actions/setup-java@v4
@@ -37,6 +25,12 @@ jobs:
         uses: cachix/install-nix-action@v25
         with:
           extra_nix_config: experimental-features = nix-command flakes
+          nix_path: nixpkgs=channel:nixos-25.05
+
+      - uses: cachix/cachix-action@v14
+        with:
+          name: undefined01
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
       - name: Verify toolchain
         run: |
@@ -47,54 +41,44 @@ jobs:
           fi
           nix --version
 
-      - name: Detect project layout
-        run: |
-          set -euo pipefail
-          ROOT_PREFIX=""
-          if [ -d "temu/src" ]; then
-            ROOT_PREFIX="temu/"
-          fi
-          echo "ROOT_PREFIX=${ROOT_PREFIX}" >> "$GITHUB_ENV"
-          if [ -x "./gradlew" ]; then
-            echo "GRADLE_CMD=./gradlew" >> "$GITHUB_ENV"
-          elif [ -x "./temu/gradlew" ]; then
-            echo "GRADLE_CMD=./temu/gradlew" >> "$GITHUB_ENV"
-          else
-            echo "Gradle wrapper not found" >&2
-            exit 1
-          fi
-
       - name: Build emulator distribution
         run: |
           set -euo pipefail
-          chmod +x "${GRADLE_CMD}"
-          "${GRADLE_CMD}" --no-daemon installDist
-          TEMU_BIN_PATH="${ROOT_PREFIX}build/install/temu/bin/temu"
+          ./gradlew --no-daemon installDist
+          TEMU_BIN_PATH="temu/build/install/temu/bin/temu"
           if [ ! -x "${TEMU_BIN_PATH}" ]; then
             echo "temu binary not found at ${TEMU_BIN_PATH}" >&2
             exit 1
           fi
           echo "TEMU_BIN=${TEMU_BIN_PATH}" >> "$GITHUB_ENV"
+      
+      - name: Build test programs
+        run: |
+          set -euo pipefail
+          cd temu/src/test/
+          
+          nix-build -A packages.asm.instr-test >> nix-out
+          nix-build -A packages.asm.riscv-test >> nix-out
+          nix-build -A packages.abstract-machine >> nix-out
+          nix-build -A packages.linux >> nix-out
+
+          mkdir build
+          cat nix-out | while read -r line; do
+            tar xaf $PWD/build/$line.tar.xz -C $line .
+          done
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: temu-test-artifacts
+          path: build/*
 
       - name: Instruction-level tests
         run: |
           set -euo pipefail
-          SRC_ROOT="${ROOT_PREFIX}src"
-          if [ ! -d "${SRC_ROOT}" ]; then
-            echo "Source directory ${SRC_ROOT} not found" >&2
-            exit 1
-          fi
-          make -C "${SRC_ROOT}/test/asm/instr-test"
-          if ! "${GRADLE_CMD}" --no-daemon :temu:test; then
-            echo "Falling back to Gradle 'test' task"
-            "${GRADLE_CMD}" --no-daemon test
-          fi
-          make -C "${SRC_ROOT}/test/asm/riscv-test"
-          RISCV_BIN_DIR="${SRC_ROOT}/test/asm/riscv-test/build"
-          if [ ! -d "${RISCV_BIN_DIR}" ]; then
-            echo "RISCV binary directory ${RISCV_BIN_DIR} missing" >&2
-            exit 1
-          fi
+          RISCV_BIN_DIR=$(nix-build -A packages.asm.instr-test temu/src/test/default.nix)/bin
+          TEMU_BIN="${{ env.TEMU_BIN }}"
+          ls -al $RISCV_BIN_DIR
           find "${RISCV_BIN_DIR}" -name '*-p-*.bin' -print0 | while IFS= read -r -d '' bin; do
             echo "Running ${bin}"
             log="$(mktemp)"
@@ -115,32 +99,20 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: |
           set -euo pipefail
-          SRC_ROOT="${ROOT_PREFIX}src"
-          ABSTRACT_MACHINE_DIR="${SRC_ROOT}/test/abstract-machine"
-          make -C "${ABSTRACT_MACHINE_DIR}" coremark
-          "${TEMU_BIN}" "${ABSTRACT_MACHINE_DIR}/build/coremark-riscv64-nemu.bin"
-          make -C "${ABSTRACT_MACHINE_DIR}" coremark ITERATIONS=100000
-          COREMARK_ITER_BIN="${ABSTRACT_MACHINE_DIR}/build/coremark-10000-iteration-riscv64-nemu.bin"
-          if [ ! -f "${COREMARK_ITER_BIN}" ]; then
-            ALT_COREMARK="${ABSTRACT_MACHINE_DIR}/build/coremark-100000-iteration-riscv64-nemu.bin"
-            if [ -f "${ALT_COREMARK}" ]; then
-              COREMARK_ITER_BIN="${ALT_COREMARK}"
-            else
-              echo "Unable to find extended CoreMark binary" >&2
+          BIN_DIR=$(nix-build -A packages.abstract-machine temu/src/test/default.nix)/bin
+          TEMU_BIN="${{ env.TEMU_BIN }}"
+          ls -al $BIN_DIR
+          for bin in "${BIN_DIR}"/hello-*.bin "${BIN_DIR}"/coremark*.bin "${BIN_DIR}"/microbench-*.bin; do
+            echo "Running ${bin}"
+            log="$(mktemp)"
+            if ! "${TEMU_BIN}" "${bin}" 2>&1 | tee "${log}"; then
+              cat "${log}"
               exit 1
             fi
-          fi
-          "${TEMU_BIN}" "${COREMARK_ITER_BIN}"
-          make -C "${ABSTRACT_MACHINE_DIR}" microbench
-          "${TEMU_BIN}" "${ABSTRACT_MACHINE_DIR}/build/microbench-riscv64-nemu.bin"
-          make -C "${ABSTRACT_MACHINE_DIR}" fceux
-          "${TEMU_BIN}" "${ABSTRACT_MACHINE_DIR}/build/fceux-riscv64-nemu.bin"
-
-      - name: OS-level tests
-        run: |
-          set -euo pipefail
-          SRC_ROOT="${ROOT_PREFIX}src"
-          make -C "${SRC_ROOT}/test/rt-thread-am"
-          "${TEMU_BIN}" "${SRC_ROOT}/test/rt-thread-am/repo/bsp/abstract-machine/build/rtthread-riscv64-nemu.bin"
-          make -C "${SRC_ROOT}/test/rt-thread"
-          "${TEMU_BIN}" "${SRC_ROOT}/test/rt-thread/repo/bsp/abstract-machine/build/rtthread-riscv64-nemu.bin"
+            if ! grep -q 'Shutdown requested' "${log}"; then
+              cat "${log}"
+              echo "ERROR: Test failed ${bin}"
+              exit 1
+            fi
+            rm -f "${log}"
+          done

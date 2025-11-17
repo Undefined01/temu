@@ -1,22 +1,24 @@
-{
+
   pkgs ? import <nixpkgs> { },
 }:
 
 let
   lib = pkgs.lib;
-  riscvPkgs = pkgs.pkgsCross.riscv64-embedded;
-  riscvTriplet = "riscv64_none_elf";
-  riscvCrossCompile = "riscv64-none-elf-";
+  # riscvPkgs = pkgs.pkgsCross.riscv64-embedded;
+  # riscvTriplet = "riscv64_none_elf";
+  # riscvCrossCompile = "riscv64-none-elf-";
+  riscvPkgs = pkgs.pkgsCross.riscv64-musl;
   # riscvTriplet = "riscv64_unknown_linux_gnu";
+  riscvCrossCompile = "riscv64-unknown-linux-musl-";
   commonCFlags = [
-    "-march=rv64ima_zicsr"
+    "-march=rv64ima_zicsr_zifencei"
     "-mabi=lp64"
     "-mcmodel=medany"
     "-ffunction-sections"
     "-fdata-sections"
   ];
   musl = (
-    (riscvPkgs.musl.override { linuxHeaders = ""; }).overrideAttrs (old: {
+    (riscvPkgs.pkgsHostTarget.musl.override { linuxHeaders = ""; }).overrideAttrs (old: {
       configureFlags = old.configureFlags ++ [
         "--disable-shared"
         "--enable-static"
@@ -39,66 +41,63 @@ let
       meta.platforms = old.meta.platforms ++ [ "riscv64-none" ];
     })
   );
-  newlib = (
-    riscvPkgs.newlib-nano.overrideAttrs (old: {
-      CFLAGS = (pkgs.lib.optionals (old ? CFLAGS) old.CFLAGS) ++ commonCFlags;
-    })
-  );
   rt = (
-    riscvPkgs.llvmPackages.compiler-rt-no-libc.overrideAttrs (old: {
-      CFLAGS = (pkgs.lib.optionals (old ? CFLAGS) old.CFLAGS) ++ commonCFlags;
+    riscvPkgs.pkgsHostTarget.llvmPackages.compiler-rt-no-libc.overrideAttrs (old: {
+      env.NIX_CFLAGS_COMPILE = old.env.NIX_CFLAGS_COMPILE + " " + toString commonCFlags;
     })
   );
-  rt-lib = "${rt.out}/lib/baremetal";
-  # rt-lib = "${rt.out}/lib/linux";
+
+  rt-lib = "${rt.out}/lib/linux";
 
   # gcc -dumpspecs
   # https://gcc.gnu.org/onlinedocs/gcc-13.2.0/gcc/Spec-Files.html
   # https://wozniak.ca/blog/2024/01/09/1/
-  specFile = pkgs.writeText "riscv64-embedded-musl.specs" ''
+  specFile = pkgs.writeText "riscv64-linux-musl.specs" ''
+    %include <${musl.dev}/lib/musl-gcc.specs>
+
     *startfile:
-    ${musl.out}/lib/crt1.o ${musl.out}/lib/crti.o ${musl.out}/lib/crtn.o
+    ${musl.out}/lib/Scrt1.o ${musl.out}/lib/crti.o
 
     *endfile:
-
+    ${musl.out}/lib/crtn.o
 
     *libgcc:
-    -lclang_rt.builtins-riscv64
+    -L ${rt-lib} -lclang_rt.builtins-riscv64
   '';
 in
-pkgs.mkShell {
-  nativeBuildInputs = with pkgs; [
+riscvPkgs.mkShell {
+  strictDeps = true;
+  depsBuildBuild = with riscvPkgs.pkgsBuildBuild; [
     gnumake
     gcc
-    riscvPkgs.buildPackages.gcc
 
     # for linux
     flex
     bison
     bc
   ];
+  nativeBuildInputs = with riscvPkgs.pkgsBuildHost; [
+    gcc
+  ];
+  buildInputs = [
+    musl
+    rt
+  ];
 
-  LIBC = musl;
-  RT = "${rt-lib}";
   CROSS_COMPILE = riscvCrossCompile;
+  passthru = { inherit rt; };
 
   # see the cc-wrapper by `less $(dirname $(which riscv64-unknown-linux-gnu-gcc))/../nix-support/add-flags.sh`
-  "NIX_CFLAGS_COMPILE_${riscvTriplet}" = [
+  NIX_CFLAGS_COMPILE = [
     "-isystem ${musl.dev}/include"
-    "-specs=${specFile}"
-    "-D__linux__"
-    "-nodefaultlibs"
-    "-march=rv64ima_zicsr_zifencei"
-    "-mabi=lp64"
-    "-mcmodel=medany"
-    "-L${musl.out}/lib"
-    "-L${rt-lib}"
-  ];
-  "NIX_LDFLAGS_${riscvTriplet}" = [
-    "-L${musl.out}/lib"
-    "-L${rt-lib}"
+    "-specs ${specFile}"
+  ] ++ commonCFlags;
+  NIX_LDFLAGS = [
+    "-L ${musl}/lib"
+    "-L ${rt-lib}"
     "-nostdlib"
     "-lc"
     "-lclang_rt.builtins-riscv64"
+    "--no-dynamic-linker"
   ];
 }

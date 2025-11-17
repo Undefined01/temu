@@ -9,6 +9,7 @@ abstract-machine: repo/README.md
 APPS := hello coremark microbench fceux yield-os
 
 ARCH ?= riscv64-nemu
+CROSS_COMPILE ?= riscv64-none-elf-
 ITERATIONS ?= 10000
 mainargs ?= mario
 
@@ -16,9 +17,10 @@ coremark_extra_args := ITERATIONS=$(ITERATIONS)
 fceux_extra_args := mainargs=$(mainargs)
 
 $(APPS): abstract-machine
-	AM_HOME=$(shell pwd)/repo $(MAKE) -C repo/apps/$@ ARCH=$(ARCH) LINUX_GNU_TOOLCHAIN=1 $($@_extra_args)
+	AM_HOME=$(shell pwd)/repo $(MAKE) -C repo/apps/$@ ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) $($@_extra_args)
 	mkdir -p build
 	cp repo/apps/$@/build/$@*.bin build/
+	cp repo/apps/$@/build/$@*.elf build/
 	cp repo/apps/$@/build/$@*.txt build/
 
 
@@ -31,7 +33,7 @@ mainargs_for_amtest-sv39-hp := f
 mainargs_for_amtest-sv39-ppn := g
 
 $(AMTESTS): abstract-machine
-	AM_HOME=$(shell pwd)/repo $(MAKE) -C repo/tests/amtest ARCH=$(ARCH) LINUX_GNU_TOOLCHAIN=1 mainargs=$(mainargs_for_$@)
+	AM_HOME=$(shell pwd)/repo $(MAKE) -C repo/tests/amtest ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) mainargs=$(mainargs_for_$@)
 	mkdir -p build
 	cp repo/tests/amtest/build/amtest-*.bin build/$@-$(ARCH).bin
 	cp repo/tests/amtest/build/amtest-*.txt build/$@-$(ARCH).txt

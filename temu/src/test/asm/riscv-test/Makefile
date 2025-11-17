@@ -16,7 +16,7 @@ SUITES := rv64ui rv64um rv64mi
 
 $(SUITES): repo/patched
 	mkdir -p build/$@
-	$(MAKE) -C repo/isa RISCV_PREFIX=riscv64-linux-gnu- $@
+	$(MAKE) -C repo/isa $@
 	mv repo/isa/$@-p-* build/$@/
 
 clean:

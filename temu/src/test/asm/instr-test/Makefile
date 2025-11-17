@@ -23,7 +23,7 @@ ${build_dir}/%.o: ${src_dir}/%.s ${include_dir}/common.h
 	@${RV_AS} -march=${RV_ARCH} -o $@ -I ${include_dir} $<
 
 %.elf: %.o ${script_dir}/rv64.ld
-	@${RV_LD} -T ${script_dir}/rv64.ld -o $@ $<
+	@${RV_LD} -static -T ${script_dir}/rv64.ld -o $@ $<
 
 %.txt: %.elf
 	@${RV_OBJDUMP} -D $^ > $@
